@@ -1,10 +1,9 @@
 // Onboarding state machine
-// Steps: server, brain, network, ready, welcome
-// Paths: local, remote, companion, null
+// Steps: server, brain, network, ready
+// Paths: local, remote, null
 
 const STEPS_LOCAL = ['server', 'brain', 'network', 'ready']
 const STEPS_REMOTE = ['server', 'brain', 'ready']
-const STEPS_COMPANION = ['welcome', 'brain', 'ready']
 
 // Map old step names to new ones for resume
 const STEP_MIGRATION = {
@@ -23,12 +22,11 @@ export function migrateStep(step) {
 export function getVisibleSteps(path) {
   if (path === 'local') return STEPS_LOCAL
   if (path === 'remote') return STEPS_REMOTE
-  if (path === 'companion') return STEPS_COMPANION
   return null
 }
 
 export function getStepTitles(path) {
-  const titles = { server: 'Server', brain: 'Brain', network: 'Network', ready: 'Ready', welcome: 'Server' }
+  const titles = { server: 'Server', brain: 'Brain', network: 'Network', ready: 'Ready' }
   const steps = getVisibleSteps(path)
   if (!steps) return null
   return steps.map(id => ({ id, title: titles[id] }))
@@ -39,8 +37,6 @@ export function canEnter(step, ctx) {
   switch (step) {
     case 'server':
       return true
-    case 'welcome':
-      return ctx.path === 'companion'
     case 'brain':
       return !!(ctx.server?.url && ctx.server?.serverName)
     case 'network':
@@ -55,7 +51,6 @@ export function canEnter(step, ctx) {
 // Navigation
 export function nextStep(step, ctx) {
   switch (step) {
-    case 'welcome':
     case 'server':
       return 'brain'
     case 'brain':
@@ -70,7 +65,7 @@ export function nextStep(step, ctx) {
 export function prevStep(step, ctx) {
   switch (step) {
     case 'brain':
-      return ctx.path === 'companion' ? 'welcome' : 'server'
+      return 'server'
     case 'network':
       return 'brain'
     case 'ready':
@@ -112,18 +107,7 @@ export const ACTIONS = {
   SET_STEP: 'SET_STEP'
 }
 
-export function createInitialState(companion) {
-  if (companion) {
-    return {
-      path: 'companion',
-      step: 'welcome',
-      server: { url: companion.url, serverName: companion.serverName },
-      identity: null,
-      brain: null,
-      networking: null,
-      resumeMessage: null
-    }
-  }
+export function createInitialState() {
   return {
     path: null,
     step: 'server',
@@ -138,7 +122,7 @@ export function createInitialState(companion) {
 export function onboardingReducer(state, action) {
   switch (action.type) {
     case ACTIONS.RESTORE: {
-      const { onboarding, companion } = action
+      const { onboarding } = action
       if (!onboarding) return state
 
       const path = onboarding.path || state.path
@@ -213,10 +197,7 @@ export function onboardingReducer(state, action) {
     }
 
     case ACTIONS.RESET: {
-      if (action.companion) {
-        return createInitialState(action.companion)
-      }
-      return createInitialState(null)
+      return createInitialState()
     }
 
     case ACTIONS.SET_STEP: {

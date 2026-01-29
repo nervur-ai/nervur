@@ -22,6 +22,8 @@ export function generateDockerCompose({
       - ${dataDir}:/data
     environment:
       - TUWUNEL_CONFIG=/etc/tuwunel.toml
+    networks:
+      - nervur
     healthcheck:
       test: ["CMD", "curl", "-fsSL", "http://localhost:8008/_matrix/client/versions"]
       interval: 10s
@@ -37,12 +39,17 @@ export function generateDockerCompose({
     restart: unless-stopped
     network_mode: host
     command: tunnel --no-autoupdate run --token \${TUNNEL_TOKEN}
-    env_file:
-      - .env
+    environment:
+      - TUNNEL_TOKEN=\${TUNNEL_TOKEN}
     depends_on:
       - homeserver
 `
   }
+  yml += `
+networks:
+  nervur:
+    external: true
+`
   return yml
 }
 
@@ -85,12 +92,3 @@ registration_token = "${registrationSecret}"
 ${wellKnown}`
 }
 
-export function generateEnvFile({ serverName = 'nervur.local', port = 8008, tunnelToken } = {}) {
-  let env = `SERVER_NAME=${serverName}
-PORT=${port}
-`
-  if (tunnelToken) {
-    env += `TUNNEL_TOKEN=${tunnelToken}\n`
-  }
-  return env
-}

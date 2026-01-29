@@ -2,7 +2,6 @@ import { useReducer, useEffect } from 'react'
 import ServerStep from './ServerStep.jsx'
 import BrainStep from './BrainStep.jsx'
 import NetworkingStep from './NetworkingStep.jsx'
-import { CheckIcon } from '../onboarding/icons.jsx'
 import {
   onboardingReducer,
   createInitialState,
@@ -10,8 +9,8 @@ import {
   ACTIONS
 } from '../onboarding/machine.js'
 
-export default function Onboarding({ savedConfig, companion, onComplete }) {
-  const [ctx, dispatch] = useReducer(onboardingReducer, companion, createInitialState)
+export default function Onboarding({ savedConfig, onComplete }) {
+  const [ctx, dispatch] = useReducer(onboardingReducer, undefined, createInitialState)
 
   // Fetch the full config from the server and pass it to onComplete
   const finishOnboarding = async () => {
@@ -41,8 +40,8 @@ export default function Onboarding({ savedConfig, companion, onComplete }) {
   useEffect(() => {
     const ob = savedConfig?.onboarding
     if (!ob) return
-    dispatch({ type: ACTIONS.RESTORE, onboarding: ob, companion })
-  }, [savedConfig, companion])
+    dispatch({ type: ACTIONS.RESTORE, onboarding: ob })
+  }, [savedConfig])
 
   // Auto-finish when reaching ready step
   useEffect(() => {
@@ -56,7 +55,7 @@ export default function Onboarding({ savedConfig, companion, onComplete }) {
 
   async function resetOnboarding() {
     await fetch('/api/onboarding/reset', { method: 'POST' })
-    dispatch({ type: ACTIONS.RESET, companion })
+    dispatch({ type: ACTIONS.RESET })
   }
 
   return (
@@ -110,18 +109,13 @@ export default function Onboarding({ savedConfig, companion, onComplete }) {
 
         {/* Card */}
         <div className="bg-white rounded-2xl shadow-2xl p-8 relative">
-          {ctx.step !== 'server' && ctx.step !== 'welcome' && ctx.step !== 'ready' && (
+          {ctx.step !== 'server' && ctx.step !== 'ready' && (
             <button
               onClick={resetOnboarding}
               className="absolute top-4 right-4 text-xs text-gray-400 hover:text-red-500 transition-colors"
             >
               Start over
             </button>
-          )}
-
-          {/* Welcome (companion mode) */}
-          {ctx.step === 'welcome' && ctx.path === 'companion' && (
-            <WelcomeStep companion={companion} onContinue={() => dispatch({ type: ACTIONS.SET_STEP, step: 'brain' })} />
           )}
 
           {/* Server */}
@@ -158,42 +152,6 @@ export default function Onboarding({ savedConfig, companion, onComplete }) {
           )}
         </div>
       </div>
-    </div>
-  )
-}
-
-function WelcomeStep({ companion, onContinue }) {
-  return (
-    <div>
-      <div className="flex items-center gap-3 mb-4">
-        <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-          <CheckIcon />
-        </div>
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Your homeserver is ready</h2>
-        </div>
-      </div>
-      <p className="text-gray-600 mb-6">
-        Your Matrix homeserver was deployed and configured automatically.
-      </p>
-
-      <div className="bg-gray-50 rounded-lg p-4 space-y-3 mb-6">
-        <div>
-          <p className="text-xs text-gray-500">Server name</p>
-          <p className="text-sm font-mono text-gray-900">{companion.serverName}</p>
-        </div>
-        <div>
-          <p className="text-xs text-gray-500">Internal URL</p>
-          <p className="text-sm font-mono text-gray-900">{companion.url}</p>
-        </div>
-      </div>
-
-      <button
-        onClick={onContinue}
-        className="w-full px-6 py-3 bg-nervur-600 text-white rounded-lg hover:bg-nervur-700 transition-colors font-medium"
-      >
-        Continue
-      </button>
     </div>
   )
 }

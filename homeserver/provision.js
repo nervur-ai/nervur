@@ -8,10 +8,12 @@ import {
   waitForHealthy,
   testEndpoint,
   getContainerStatus,
-  findTuwunelContainers
+  findTuwunelContainers,
+  ensureNetwork,
+  connectToNetwork
 } from './docker.js'
 import { checkPorts, checkWritePermissions } from './validation.js'
-import { generateDockerCompose, generateTuwunelConfig, generateEnvFile, generateSecret } from './templates.js'
+import { generateDockerCompose, generateTuwunelConfig, generateSecret } from './templates.js'
 
 const CONTAINER_NAME = 'nervur-homeserver'
 const HS_PORT = 8008
@@ -145,7 +147,6 @@ export async function configure(hsDir, { serverName = 'nervur.local', port = HS_
   // Write config files
   writeFileSync(join(hsDir, 'docker-compose.yml'), generateDockerCompose({ containerName, dataDir, port }))
   writeFileSync(join(hsDir, 'tuwunel.toml'), generateTuwunelConfig({ serverName, port, registrationSecret }))
-  writeFileSync(join(hsDir, '.env'), generateEnvFile({ serverName, port }))
 
   return { success: true, registrationSecret, containerName, serverName, port }
 }
@@ -155,13 +156,27 @@ export async function pull() {
   return { success: true, output }
 }
 
+const isDocker = existsSync('/.dockerenv')
+
 export async function start(hsDir, containerName = CONTAINER_NAME, port = HS_PORT) {
+  // Set up shared Docker network so brain container can reach homeserver by name
+  await ensureNetwork('nervur')
   await composeUp(hsDir)
-  const url = `http://localhost:${port}`
-  const health = await waitForHealthy(containerName, 60_000, url)
+
+  if (isDocker) {
+    // Connect the brain container to the nervur network
+    await connectToNetwork('nervur-brain', 'nervur')
+  }
+
+  // Use container name for health check when in Docker, localhost otherwise
+  const healthUrl = isDocker ? `http://${containerName}:8008` : `http://localhost:${port}`
+  const health = await waitForHealthy(containerName, 60_000, healthUrl)
   if (!health.healthy) {
     return { success: false, error: 'Homeserver did not become healthy within timeout' }
   }
+
+  // Return the URL the brain should use to talk to homeserver
+  const url = isDocker ? `http://${containerName}:8008` : `http://localhost:${port}`
   return { success: true, url, elapsed: health.elapsed }
 }
 

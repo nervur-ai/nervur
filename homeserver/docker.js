@@ -94,6 +94,22 @@ export async function getContainerLogs(name, tail = 50) {
   return { logs: stdout }
 }
 
+export async function ensureNetwork(name = 'nervur') {
+  try {
+    await run('docker', ['network', 'create', name])
+  } catch {
+    // Network already exists — that's fine
+  }
+}
+
+export async function connectToNetwork(container, network = 'nervur') {
+  try {
+    await run('docker', ['network', 'connect', network, container])
+  } catch {
+    // Already connected — that's fine
+  }
+}
+
 // Find all containers (running and stopped) using the Tuwunel image (any tag)
 export async function findTuwunelContainers() {
   try {

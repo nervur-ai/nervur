@@ -12,7 +12,9 @@ vi.mock('../docker.js', () => ({
   waitForHealthy: vi.fn(),
   testEndpoint: vi.fn(),
   getContainerStatus: vi.fn(),
-  findTuwunelContainers: vi.fn()
+  findTuwunelContainers: vi.fn(),
+  ensureNetwork: vi.fn(),
+  connectToNetwork: vi.fn()
 }))
 
 vi.mock('../validation.js', () => ({
@@ -110,7 +112,6 @@ describe('configure', () => {
     // Verify files were written
     expect(existsSync(join(hsDir, 'docker-compose.yml'))).toBe(true)
     expect(existsSync(join(hsDir, 'tuwunel.toml'))).toBe(true)
-    expect(existsSync(join(hsDir, '.env'))).toBe(true)
     expect(existsSync(join(hsDir, 'data'))).toBe(true)
 
     const compose = readFileSync(join(hsDir, 'docker-compose.yml'), 'utf8')

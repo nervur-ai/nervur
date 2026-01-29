@@ -25,14 +25,6 @@ app.get('/health', (req, res) => {
 app.get('/api/status', (req, res) => {
   const initialized = isInitialized()
   const result = { initialized, config: readConfig() }
-
-  // Companion mode: brain is deployed alongside homeserver via deploy.sh
-  const companionUrl = process.env.HOMESERVER_URL
-  const companionServerName = process.env.SERVER_NAME
-  if (companionUrl && companionServerName && !initialized) {
-    result.companion = { url: companionUrl, serverName: companionServerName }
-  }
-
   res.json(result)
 })
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { generateSecret, generateDockerCompose, generateTuwunelConfig, generateEnvFile } from '../templates.js'
+import { generateSecret, generateDockerCompose, generateTuwunelConfig } from '../templates.js'
 
 describe('generateSecret', () => {
   it('returns a hex string of correct length', () => {
@@ -42,7 +42,6 @@ describe('generateDockerCompose', () => {
     const yml = generateDockerCompose({ tunnelToken: 'eyJ0ZXN0IjoidG9rZW4ifQ==' })
     expect(yml).toContain('cloudflare/cloudflared:latest')
     expect(yml).toContain('container_name: nervur-cloudflared')
-    expect(yml).toContain('network_mode: host')
     expect(yml).toContain('TUNNEL_TOKEN')
     expect(yml).toContain('depends_on:')
   })
@@ -50,6 +49,19 @@ describe('generateDockerCompose', () => {
   it('does not include cloudflared when tunnelToken is absent', () => {
     const yml = generateDockerCompose()
     expect(yml).not.toContain('cloudflared')
+  })
+
+  it('includes external nervur network', () => {
+    const yml = generateDockerCompose()
+    expect(yml).toContain('networks:')
+    expect(yml).toContain('nervur:')
+    expect(yml).toContain('external: true')
+  })
+
+  it('connects homeserver to nervur network', () => {
+    const yml = generateDockerCompose()
+    // homeserver service should have networks: - nervur
+    expect(yml).toContain('networks:\n      - nervur')
   })
 })
 
@@ -115,29 +127,5 @@ describe('generateTuwunelConfig', () => {
     const toml = generateTuwunelConfig({ registrationSecret: 'x', port: 8008 })
     expect(toml).toContain('client = "http://localhost:8008"')
     expect(toml).not.toContain('https://')
-  })
-})
-
-describe('generateEnvFile', () => {
-  it('generates env with defaults', () => {
-    const env = generateEnvFile()
-    expect(env).toContain('SERVER_NAME=nervur.local')
-    expect(env).toContain('PORT=8008')
-  })
-
-  it('respects custom values', () => {
-    const env = generateEnvFile({ serverName: 'my.server', port: 3000 })
-    expect(env).toContain('SERVER_NAME=my.server')
-    expect(env).toContain('PORT=3000')
-  })
-
-  it('includes TUNNEL_TOKEN when tunnelToken is provided', () => {
-    const env = generateEnvFile({ tunnelToken: 'my-secret-token' })
-    expect(env).toContain('TUNNEL_TOKEN=my-secret-token')
-  })
-
-  it('does not include TUNNEL_TOKEN when tunnelToken is absent', () => {
-    const env = generateEnvFile()
-    expect(env).not.toContain('TUNNEL_TOKEN')
   })
 })
