@@ -80,12 +80,27 @@ app.post('/api/update', (_req, res) => {
   try {
     execSync('docker compose -f /opt/nervur/docker-compose.yml pull brain', { timeout: 60000 })
     res.json({ success: true, message: 'Image pulled, restarting...' })
-    // Detach the restart so the response gets sent first
+    // Spawn a SEPARATE container to do the restart — running `docker compose up`
+    // inside this container fails because docker kills this process when replacing it,
+    // leaving the new container stuck in "Created" state.
     setTimeout(() => {
-      spawn('docker', ['compose', '-f', '/opt/nervur/docker-compose.yml', 'up', '-d', 'brain'], {
-        detached: true,
-        stdio: 'ignore'
-      }).unref()
+      spawn(
+        'docker',
+        [
+          'run',
+          '--rm',
+          '-d',
+          '-v',
+          '/var/run/docker.sock:/var/run/docker.sock',
+          '-v',
+          '/opt/nervur:/opt/nervur:ro',
+          'ghcr.io/nervur-ai/nervur:latest',
+          'sh',
+          '-c',
+          'sleep 2 && docker compose -f /opt/nervur/docker-compose.yml up -d brain'
+        ],
+        { detached: true, stdio: 'ignore' }
+      ).unref()
     }, 500)
   } catch (err) {
     res.status(500).json({ error: err.message })
