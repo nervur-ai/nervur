@@ -178,6 +178,7 @@ router.post('/networking/configure-tunnel', async (req, res) => {
     const onboarding = config.onboarding || {}
     const server = onboarding.server || {}
     const port = server.port || 8008
+    const isDocker = existsSync('/.dockerenv')
 
     // Read serverName from existing tuwunel.toml (source of truth)
     let serverName
@@ -194,7 +195,6 @@ router.post('/networking/configure-tunnel', async (req, res) => {
     if (tunnelToken) {
       let dataDir = './data'
       let configDir = null
-      const isDocker = existsSync('/.dockerenv')
       if (isDocker) {
         const hostDataPath = await resolveHostPath('nervur-brain', '/app/data')
         if (hostDataPath) {
