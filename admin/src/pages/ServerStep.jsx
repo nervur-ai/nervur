@@ -39,7 +39,7 @@ const PROVISION_STEPS = [
   { id: 'ready', label: 'Homeserver ready' }
 ]
 
-export default function ServerStep({ ctx, dispatch, savedConfig, onReset }) {
+export default function ServerStep({ ctx, dispatch, savedConfig, onReset, onFactoryReset }) {
   const { path, server: existingServer } = ctx
 
   // ── Local state ──
@@ -56,6 +56,19 @@ export default function ServerStep({ ctx, dispatch, savedConfig, onReset }) {
   const [url, setUrl] = useState(existingServer?.input || '')
   const [hsValidation, setHsValidation] = useState({ status: null, message: '' })
   const [verified, setVerified] = useState(null)
+
+  // ── Factory reset state ──
+  const [resetConfirm, setResetConfirm] = useState(false)
+  const [resetting, setResetting] = useState(false)
+
+  async function handleFactoryReset() {
+    if (!resetConfirm) {
+      setResetConfirm(true)
+      return
+    }
+    setResetting(true)
+    await onFactoryReset()
+  }
 
   // Whether any async operation is running (disables toggle)
   const isBusy =
@@ -430,6 +443,22 @@ export default function ServerStep({ ctx, dispatch, savedConfig, onReset }) {
                   <p className="text-sm text-gray-600 mt-1">Replace with a new local homeserver setup</p>
                 </button>
               </div>
+              <div className="mt-3 text-center">
+                <button
+                  onClick={handleFactoryReset}
+                  disabled={resetting}
+                  className={`text-xs transition-colors ${
+                    resetConfirm
+                      ? 'text-red-600 font-medium hover:text-red-700'
+                      : 'text-gray-400 hover:text-red-500'
+                  }`}
+                >
+                  {resetting ? 'Wiping...' : resetConfirm ? 'Click again to wipe all homeserver data and start fresh' : 'Start fresh (wipe everything)'}
+                </button>
+                {resetConfirm && !resetting && (
+                  <button onClick={() => setResetConfirm(false)} className="ml-2 text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+                )}
+              </div>
             </div>
           )}
 
@@ -488,6 +517,18 @@ export default function ServerStep({ ctx, dispatch, savedConfig, onReset }) {
           {localError && !provSteps.some((s) => s.status === 'fail') && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
               <p className="text-red-800 text-sm">{localError}</p>
+              <button
+                onClick={handleFactoryReset}
+                disabled={resetting}
+                className={`mt-2 text-xs transition-colors ${
+                  resetConfirm ? 'text-red-600 font-medium' : 'text-red-400 hover:text-red-600'
+                }`}
+              >
+                {resetting ? 'Wiping...' : resetConfirm ? 'Click again to confirm' : 'Wipe everything and start fresh'}
+              </button>
+              {resetConfirm && !resetting && (
+                <button onClick={() => setResetConfirm(false)} className="ml-2 text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+              )}
             </div>
           )}
 

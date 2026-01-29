@@ -58,6 +58,11 @@ export default function Onboarding({ savedConfig, onComplete }) {
     dispatch({ type: ACTIONS.RESET })
   }
 
+  async function factoryReset() {
+    await fetch('/api/onboarding/factory-reset', { method: 'POST' })
+    dispatch({ type: ACTIONS.RESET })
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-nervur-900 to-nervur-950 flex items-center justify-center p-8">
       <div className="max-w-2xl w-full">
@@ -125,6 +130,7 @@ export default function Onboarding({ savedConfig, onComplete }) {
               dispatch={dispatch}
               savedConfig={savedConfig}
               onReset={resetOnboarding}
+              onFactoryReset={factoryReset}
             />
           )}
 
