@@ -225,8 +225,8 @@ router.post('/networking/configure-tunnel', async (req, res) => {
     await composeUp(HS_DIR)
 
     // Wait for homeserver to be healthy
-    const url = `http://localhost:${port}`
-    const health = await waitForHealthy('nervur-homeserver', 60_000, url)
+    const healthUrl = isDocker ? `http://nervur-homeserver:8008` : `http://localhost:${port}`
+    const health = await waitForHealthy('nervur-homeserver', 60_000, healthUrl)
     if (!health.healthy) {
       return res
         .status(502)
