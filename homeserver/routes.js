@@ -9,7 +9,8 @@ import { generateDockerCompose, generateEnvFile } from './templates.js'
 import { composeUp, composeRestart, waitForHealthy, getContainerStatus, getContainerLogs } from './docker.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const HS_DIR = join(__dirname, '..', 'data', 'homeserver')
+const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), 'data')
+const HS_DIR = join(DATA_DIR, 'homeserver')
 
 const router = Router()
 

@@ -23,6 +23,7 @@ COPY --from=builder /app/admin/dist admin/dist
 
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV DATA_DIR=/app/data
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \

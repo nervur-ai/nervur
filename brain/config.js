@@ -1,12 +1,24 @@
-import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync } from 'fs'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import yaml from 'js-yaml'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+
+// Data directory: env var > cwd (dev: matrix-brain/, prod: /app)
+// Tests use per-process temp files inside the source tree
+const DATA_DIR = process.env.NERVUR_TEST
+  ? __dirname // tests write next to source, cleaned up after
+  : (process.env.DATA_DIR || join(process.cwd(), 'data'))
+
+// Ensure data dir exists (no-op if already there)
+if (!process.env.NERVUR_TEST) {
+  try { mkdirSync(DATA_DIR, { recursive: true }) } catch {}
+}
+
 const CONFIG_PATH = process.env.NERVUR_TEST
-  ? join(dirname(fileURLToPath(import.meta.url)), '..', `.config-test-${process.pid}.yml`)
-  : join(__dirname, '..', 'config.yml')
+  ? join(__dirname, `.config-test-${process.pid}.yml`)
+  : join(DATA_DIR, 'config.yml')
 
 export function getConfigPath() {
   return CONFIG_PATH
