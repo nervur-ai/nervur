@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url'
 import { readConfig, updateConfig } from '../brain/config.js'
 import { runPreflight, configure, pull, start, verify, getStatus } from './provision.js'
 import { checkPort } from './validation.js'
-import { generateDockerCompose, generateEnvFile } from './templates.js'
+import { generateDockerCompose } from './templates.js'
 import { composeUp, composeRestart, waitForHealthy, getContainerStatus, getContainerLogs } from './docker.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -184,13 +184,10 @@ router.post('/networking/configure-tunnel', async (req, res) => {
     }
     serverName = serverName || server.serverName || 'nervur.local'
 
-    // If tunnelToken provided, rewrite docker-compose and .env with cloudflared service
+    // If tunnelToken provided, rewrite docker-compose with cloudflared service
     if (tunnelToken) {
       const compose = generateDockerCompose({ port, tunnelToken })
       writeFileSync(join(HS_DIR, 'docker-compose.yml'), compose, 'utf8')
-
-      const env = generateEnvFile({ serverName, port, tunnelToken })
-      writeFileSync(join(HS_DIR, '.env'), env, 'utf8')
     }
 
     // Federation port: 443 for tunnel (HTTPS only), 8448 for direct route
