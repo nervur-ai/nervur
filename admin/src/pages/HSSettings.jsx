@@ -17,12 +17,8 @@ export default function HSSettings({ config }) {
 
   const [containers, setContainers] = useState(null)
   const [hsAction, setHsAction] = useState('')
-  const [regConfig, setRegConfig] = useState(null)
-  const [regSaving, setRegSaving] = useState(false)
-
   useEffect(() => {
     fetchContainerStatus()
-    fetchRegConfig()
   }, [])
 
   const fetchContainerStatus = async () => {
@@ -49,36 +45,6 @@ export default function HSSettings({ config }) {
       setTimeout(fetchContainerStatus, 2000)
     }
     setHsAction('')
-  }
-
-  const fetchRegConfig = async () => {
-    try {
-      const res = await fetch('/api/homeserver/registration-config')
-      const data = await res.json()
-      if (!data.error) setRegConfig(data)
-    } catch {
-      /* ignore */
-    }
-  }
-
-  const setRegMode = async (mode) => {
-    if (regSaving || regConfig?.mode === mode) return
-    setRegSaving(true)
-    try {
-      const res = await fetch('/api/homeserver/registration-config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode })
-      })
-      const data = await res.json()
-      if (data.success) {
-        await fetchRegConfig()
-        fetchContainerStatus()
-      }
-    } catch {
-      /* ignore */
-    }
-    setRegSaving(false)
   }
 
   const hsRunning = containers?.homeserver?.running
@@ -152,51 +118,6 @@ export default function HSSettings({ config }) {
             <div className="flex items-center gap-2 text-sm text-gray-400">
               <Spinner />
               <span>Checking containers...</span>
-            </div>
-          )}
-        </div>
-
-        {/* Registration config */}
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Registration</h2>
-          {!regConfig ? (
-            <div className="flex items-center gap-2 text-sm text-gray-400">
-              <Spinner />
-              <span>Checking registration...</span>
-            </div>
-          ) : (
-            <div className={`space-y-1 ${regSaving ? 'opacity-50 pointer-events-none' : ''}`}>
-              {[
-                { mode: 'closed', label: 'Closed', desc: 'No one can register. Only existing users can log in.' },
-                { mode: 'token', label: 'Token only', desc: 'Users need a registration token to create an account.' },
-                { mode: 'open', label: 'Open', desc: 'Anyone can register an account freely.' }
-              ].map(({ mode, label, desc }) => (
-                <button
-                  key={mode}
-                  onClick={() => setRegMode(mode)}
-                  className={`w-full flex items-start gap-3 p-3 rounded-lg text-left transition-colors ${
-                    regConfig.mode === mode ? 'bg-nervur-50 ring-1 ring-nervur-300' : 'hover:bg-gray-50'
-                  }`}
-                >
-                  <span
-                    className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                      regConfig.mode === mode ? 'border-nervur-600' : 'border-gray-300'
-                    }`}
-                  >
-                    {regConfig.mode === mode && <span className="w-2 h-2 rounded-full bg-nervur-600" />}
-                  </span>
-                  <div>
-                    <span className="text-sm font-medium text-gray-900">{label}</span>
-                    <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
-                  </div>
-                </button>
-              ))}
-              {regSaving && (
-                <div className="flex items-center gap-2 text-sm text-gray-400 pt-2">
-                  <Spinner />
-                  <span>Restarting homeserver...</span>
-                </div>
-              )}
             </div>
           )}
         </div>

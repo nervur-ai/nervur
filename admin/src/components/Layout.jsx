@@ -67,6 +67,19 @@ function ChevronIcon({ open }) {
   )
 }
 
+function RoomsIcon() {
+  return (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"
+      />
+    </svg>
+  )
+}
+
 function TestUsersIcon() {
   return (
     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -84,7 +97,7 @@ const hsSubLinks = [
   { name: 'Settings', href: '/homeserver/settings' },
   { name: 'Remote Brains', href: '/homeserver/brains' },
   { name: 'Human Users', href: '/homeserver/users' },
-  { name: 'Rooms', href: '/homeserver/rooms' }
+  { name: 'Other Rooms', href: '/homeserver/rooms' }
 ]
 
 function compareVersions(a, b) {
@@ -95,6 +108,67 @@ function compareVersions(a, b) {
     if ((pa[i] || 0) > (pb[i] || 0)) return 1
   }
   return 0
+}
+
+function RegistrationSwitch({ isLocal }) {
+  const [mode, setMode] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!isLocal) return
+    fetch('/api/homeserver/registration-config')
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d.error) setMode(d.mode)
+      })
+      .catch(() => {})
+  }, [isLocal])
+
+  if (!isLocal || !mode) return null
+
+  const options = [
+    { value: 'closed', label: 'Closed' },
+    { value: 'token', label: 'Token' },
+    { value: 'open', label: 'Open' }
+  ]
+
+  const handleChange = async (newMode) => {
+    if (saving || mode === newMode) return
+    setSaving(true)
+    try {
+      const res = await fetch('/api/homeserver/registration-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: newMode })
+      })
+      const data = await res.json()
+      if (data.success) setMode(newMode)
+    } catch {
+      /* ignore */
+    }
+    setSaving(false)
+  }
+
+  return (
+    <div className={`${saving ? 'opacity-50 pointer-events-none' : ''}`}>
+      <p className="text-nervur-500 text-[10px] uppercase tracking-wider mb-1.5">Registration</p>
+      <div className="flex rounded-md bg-nervur-800 p-0.5">
+        {options.map(({ value, label }) => (
+          <button
+            key={value}
+            onClick={() => handleChange(value)}
+            className={`flex-1 text-[11px] py-1 rounded transition-all ${
+              mode === value
+                ? 'bg-nervur-600 text-white shadow-sm font-medium'
+                : 'text-nervur-400 hover:text-nervur-200'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 export default function Layout({ children, config }) {
@@ -192,6 +266,19 @@ export default function Layout({ children, config }) {
             </NavLink>
           )}
 
+          {/* Rooms */}
+          <NavLink
+            to="/rooms"
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors ${
+                isActive ? 'bg-nervur-700 text-white' : 'text-nervur-300 hover:bg-nervur-800 hover:text-white'
+              }`
+            }
+          >
+            <RoomsIcon />
+            Rooms
+          </NavLink>
+
           {/* Homeserver — expandable sub-nav for local only, hidden for remote */}
           {isLocal && (
             <div className="mb-1">
@@ -243,7 +330,8 @@ export default function Layout({ children, config }) {
             Settings
           </NavLink>
         </nav>
-        <div className="p-4 border-t border-nervur-800">
+        <div className="p-4 border-t border-nervur-800 space-y-3">
+          <RegistrationSwitch isLocal={isLocal} />
           <p className="text-nervur-500 text-xs">{version ? `v${version.current}` : '...'}</p>
           {hasUpdate && !updating && (
             <button
