@@ -1,45 +1,70 @@
 #!/usr/bin/env bash
-# Nervur — fresh droplet deploy script
-# Usage: curl -sSL https://raw.githubusercontent.com/nervur-ai/nervur/master/docker/deploy.sh | bash -s -- <matrix-domain>
-# Example: bash deploy.sh matrix.nervur.com
+# Nervur — install & update script
+# Usage: curl -sSL https://nervur.com/install.sh | bash -s -- <matrix-domain>
+# Fresh install: installs Docker, Caddy, configures firewall, deploys all containers
+# Update: pulls new images, restarts containers, preserves all data
 set -euo pipefail
 
 DOMAIN="${1:?Usage: deploy.sh <matrix-domain>}"
 SERVER_NAME="${2:-$DOMAIN}"
 INSTALL_DIR="/opt/nervur"
+COMPOSE_FILE="${INSTALL_DIR}/docker-compose.yml"
 
-echo "==> Deploying Nervur on ${DOMAIN} (server_name: ${SERVER_NAME})"
-
-# ── Install Docker ──
-if ! command -v docker &>/dev/null; then
-  echo "==> Installing Docker..."
-  curl -fsSL https://get.docker.com | sh
-  systemctl enable --now docker
+# ── Detect install mode ──
+if [ -f "${COMPOSE_FILE}" ]; then
+  MODE="update"
+  echo "==> Existing Nervur installation detected — updating..."
+else
+  MODE="install"
+  echo "==> Fresh install — deploying Nervur on ${DOMAIN} (server_name: ${SERVER_NAME})"
 fi
 
-# ── Install Caddy ──
-if ! command -v caddy &>/dev/null; then
-  echo "==> Installing Caddy..."
-  apt-get update -qq && apt-get install -y -qq debian-keyring debian-archive-keyring apt-transport-https curl
-  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
-  apt-get update -qq && apt-get install -y -qq caddy
-fi
+# ══════════════════════════════════════════════
+# FRESH INSTALL ONLY
+# ══════════════════════════════════════════════
+if [ "$MODE" = "install" ]; then
 
-# ── Firewall ──
-if command -v ufw &>/dev/null; then
-  echo "==> Configuring firewall..."
-  ufw allow 22/tcp
-  ufw allow 443/tcp
-  ufw allow 8448/tcp
-  ufw --force enable
-fi
+  # ── Install Docker ──
+  if ! command -v docker &>/dev/null; then
+    echo "==> Installing Docker..."
+    curl -fsSL https://get.docker.com | sh
+    systemctl enable --now docker
+  fi
 
-# ── Setup directory ──
-mkdir -p "${INSTALL_DIR}"
+  # ── Install Caddy ──
+  if ! command -v caddy &>/dev/null; then
+    echo "==> Installing Caddy..."
+    apt-get update -qq && apt-get install -y -qq debian-keyring debian-archive-keyring apt-transport-https curl
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
+    apt-get update -qq && apt-get install -y -qq caddy
+  fi
 
-# ── Tuwunel config ──
-cat > "${INSTALL_DIR}/tuwunel.toml" <<TOML
+  # ── Firewall ──
+  if command -v ufw &>/dev/null; then
+    echo "==> Configuring firewall..."
+    ufw allow 22/tcp
+    ufw allow 443/tcp
+    ufw allow 8448/tcp
+    ufw --force enable
+  fi
+
+  # ── Add swap if < 2GB RAM ──
+  TOTAL_MEM=$(free -m | awk '/^Mem:/{print $2}')
+  if [ "$TOTAL_MEM" -lt 2048 ] && [ ! -f /swapfile ]; then
+    echo "==> Adding 2GB swap..."
+    fallocate -l 2G /swapfile
+    chmod 600 /swapfile
+    mkswap /swapfile
+    swapon /swapfile
+    echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  fi
+
+  # ── Setup directory ──
+  mkdir -p "${INSTALL_DIR}"
+
+  # ── Tuwunel config ──
+  cat > "${INSTALL_DIR}/tuwunel.toml" <<TOML
 [global]
 server_name = "${SERVER_NAME}"
 database_path = "/var/lib/tuwunel"
@@ -55,8 +80,34 @@ client = "https://${DOMAIN}"
 server = "${DOMAIN}:8448"
 TOML
 
-# ── Docker Compose ──
-cat > "${INSTALL_DIR}/docker-compose.yml" <<'YAML'
+  # ── Caddy config ──
+  cat > /etc/caddy/Caddyfile <<CADDY
+${DOMAIN} {
+    handle /_matrix/* {
+        reverse_proxy localhost:8008
+    }
+    handle /.well-known/matrix/* {
+        reverse_proxy localhost:8008
+    }
+    handle {
+        reverse_proxy localhost:3000
+    }
+}
+
+${DOMAIN}:8448 {
+    reverse_proxy localhost:8008
+}
+CADDY
+
+  systemctl restart caddy
+
+fi
+# ══════════════════════════════════════════════
+# BOTH INSTALL AND UPDATE
+# ══════════════════════════════════════════════
+
+# ── Docker Compose (always written — adds Watchtower to old installs) ──
+cat > "${COMPOSE_FILE}" <<'YAML'
 services:
   homeserver:
     image: ghcr.io/matrix-construct/tuwunel:latest
@@ -92,49 +143,41 @@ services:
       homeserver:
         condition: service_healthy
 
+  watchtower:
+    image: containrrr/watchtower
+    container_name: nervur-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 300 nervur-homeserver nervur-brain
+
 volumes:
   homeserver-data:
   brain-data:
 YAML
 
-# ── Caddy config ──
-cat > /etc/caddy/Caddyfile <<CADDY
-${DOMAIN} {
-    reverse_proxy localhost:3000
-    handle_path /_matrix/* {
-        reverse_proxy localhost:8008
-    }
-}
-
-${DOMAIN}:8448 {
-    reverse_proxy localhost:8008
-}
-CADDY
-
-systemctl restart caddy
-
-# ── Add swap if < 2GB RAM ──
-TOTAL_MEM=$(free -m | awk '/^Mem:/{print $2}')
-if [ "$TOTAL_MEM" -lt 2048 ] && [ ! -f /swapfile ]; then
-  echo "==> Adding 2GB swap..."
-  fallocate -l 2G /swapfile
-  chmod 600 /swapfile
-  mkswap /swapfile
-  swapon /swapfile
-  echo '/swapfile none swap sw 0 0' >> /etc/fstab
-fi
-
 # ── Pull and start ──
 cd "${INSTALL_DIR}"
+echo "==> Pulling latest images..."
 docker compose pull
+echo "==> Starting containers..."
 docker compose up -d
 
 echo ""
-echo "==> Nervur deployed!"
-echo "    Matrix domain: https://${DOMAIN}"
-echo "    Federation:    ${DOMAIN}:8448"
-echo "    Admin UI:      http://localhost:3000 (SSH tunnel: ssh -L 3000:localhost:3000 root@<ip>)"
+if [ "$MODE" = "install" ]; then
+  echo "==> Nervur deployed!"
+  echo "    Matrix domain: https://${DOMAIN}"
+  echo "    Federation:    ${DOMAIN}:8448"
+  echo "    Admin UI:      http://localhost:3000 (SSH tunnel required)"
+  echo ""
+  echo "    To access the admin UI from your machine:"
+  echo "    ssh -L 4444:localhost:3000 root@\$(curl -s ifconfig.me)"
+  echo "    Then open http://localhost:4444 in your browser"
+else
+  echo "==> Nervur updated!"
+  echo "    Changed containers have been recreated."
+  echo "    All data has been preserved."
+fi
 echo ""
-echo "    To access the admin UI from your machine:"
-echo "    ssh -L 3000:localhost:3000 root@\$(curl -s ifconfig.me)"
-echo "    Then open http://localhost:3000 in your browser"
+echo "    Watchtower is running — new images will be auto-deployed every 5 minutes."
+echo ""

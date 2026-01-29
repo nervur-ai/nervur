@@ -33,6 +33,14 @@ services:
       homeserver:
         condition: service_healthy
 
+  watchtower:
+    image: containrrr/watchtower
+    container_name: nervur-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 300 nervur-homeserver nervur-brain
+
 volumes:
   homeserver-data:
   brain-data:
