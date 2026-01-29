@@ -203,14 +203,25 @@ export default function HumanUsers({ config }) {
         </div>
       ) : (
         <div className="space-y-3">
-          {humanUsers.map((user) => (
-            <div
-              key={user.name}
-              className={`bg-white rounded-xl shadow-sm p-5 border-l-4 ${user.deactivated ? 'border-gray-300' : 'border-green-400'}`}
-            >
-              <UserCard user={user} onDeactivate={setConfirmUser} deactivating={deactivating} />
-            </div>
-          ))}
+          {humanUsers.map((user) => {
+            const borderColor = user.deactivated
+              ? 'border-gray-300'
+              : user.linkedToBrain
+                ? 'border-green-400'
+                : 'border-red-400'
+            return (
+              <div key={user.name} className={`bg-white rounded-xl shadow-sm p-5 border-l-4 ${borderColor}`}>
+                <UserCard
+                  user={user}
+                  onDeactivate={setConfirmUser}
+                  deactivating={deactivating}
+                  hideRoleBadge
+                  tagLabel={user.linkedToBrain ? 'Brain' : 'Other'}
+                  tagColor={user.linkedToBrain ? 'green' : 'red'}
+                />
+              </div>
+            )
+          })}
         </div>
       )}
 

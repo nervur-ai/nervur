@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Spinner, UserCard, DeactivateModal } from '../components/UserComponents.jsx'
+import ChatPanel from '../components/ChatPanel.jsx'
 
 export default function TestUsers({ config }) {
   const [users, setUsers] = useState(null)
@@ -12,9 +13,11 @@ export default function TestUsers({ config }) {
   const [deactivating, setDeactivating] = useState(null)
   const [confirmUser, setConfirmUser] = useState(null)
   const [canCreate, setCanCreate] = useState(null)
+  const [selectedUser, setSelectedUser] = useState(null)
 
   const serverName = config?.homeserver?.serverName || ''
   const isLocal = config?.homeserver?.type === 'local'
+  const brainUserId = config?.brain?.user_id
 
   useEffect(() => {
     fetchUsers()
@@ -23,7 +26,7 @@ export default function TestUsers({ config }) {
     } else {
       fetch('/api/homeserver/registration-config')
         .then((r) => r.json())
-        .then((data) => setCanCreate(data.mode !== 'closed'))
+        .then((data) => setCanCreate(data.mode === 'open'))
         .catch(() => setCanCreate(false))
     }
   }, [])
@@ -71,6 +74,7 @@ export default function TestUsers({ config }) {
       const res = await fetch(`/api/homeserver/users/${encodeURIComponent(userId)}`, { method: 'DELETE' })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
+      if (selectedUser?.name === userId) setSelectedUser(null)
       fetchUsers()
     } catch (err) {
       setError(`Failed to deactivate: ${err.message}`)
@@ -78,10 +82,15 @@ export default function TestUsers({ config }) {
     setDeactivating(null)
   }
 
+  const handleSelectUser = (user) => {
+    if (!user.roomId) return
+    setSelectedUser(selectedUser?.name === user.name ? null : user)
+  }
+
   const testUsersAll = (users || []).filter((u) => u.role === 'test')
 
-  return (
-    <div>
+  const userList = (
+    <>
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Test Users</h1>
@@ -195,7 +204,15 @@ export default function TestUsers({ config }) {
       ) : (
         <div className="space-y-3">
           {testUsersAll.map((user) => (
-            <div key={user.name} className="bg-white rounded-xl shadow-sm p-5 border-l-4 border-amber-400">
+            <div
+              key={user.name}
+              onClick={() => handleSelectUser(user)}
+              className={`bg-white rounded-xl shadow-sm p-5 border-l-4 transition-colors ${
+                selectedUser?.name === user.name
+                  ? 'border-nervur-500 ring-2 ring-nervur-200'
+                  : 'border-amber-400 hover:border-amber-500'
+              } ${user.roomId ? 'cursor-pointer' : ''}`}
+            >
               <UserCard user={user} onDeactivate={setConfirmUser} deactivating={deactivating} />
             </div>
           ))}
@@ -203,6 +220,24 @@ export default function TestUsers({ config }) {
       )}
 
       <DeactivateModal confirmUser={confirmUser} onCancel={() => setConfirmUser(null)} onConfirm={handleDeactivate} />
-    </div>
+    </>
   )
+
+  if (selectedUser?.roomId) {
+    return (
+      <div className="flex gap-6" style={{ height: 'calc(100vh - 7rem)' }}>
+        <div className="w-1/2 overflow-y-auto">{userList}</div>
+        <div className="w-1/2">
+          <ChatPanel
+            roomId={selectedUser.roomId}
+            roomName={selectedUser.displayname || selectedUser.name}
+            brainUserId={brainUserId}
+            onClose={() => setSelectedUser(null)}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  return <div>{userList}</div>
 }

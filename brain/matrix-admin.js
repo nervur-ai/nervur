@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { readConfig } from './config.js'
 import { deriveBrainPassword } from './homeserver.js'
@@ -300,11 +300,12 @@ async function classifyUsers() {
   const brains = new Map()
   const testUsers = new Map()
   const humanUsers = new Map()
+  const skillUsers = new Map()
 
   // Check each room's m.room.create event for our custom type, then read
   // com.nervur.room state for the brain_user_id. Both are readable without
   // room membership thanks to world_readable history visibility.
-  const nervurTypes = ['com.nervur.brain_admin', 'com.nervur.test_user', 'com.nervur.human_user']
+  const nervurTypes = ['com.nervur.brain_admin', 'com.nervur.test_user', 'com.nervur.human_user', 'com.nervur.skill_user']
   await Promise.all(
     roomIds.map(async (roomId) => {
       try {
@@ -329,7 +330,7 @@ async function classifyUsers() {
 
         if (roomType === 'com.nervur.brain_admin') {
           brains.set(brainUserId, { roomId })
-        } else if (roomType === 'com.nervur.test_user' || roomType === 'com.nervur.human_user') {
+        } else if (roomType === 'com.nervur.test_user' || roomType === 'com.nervur.human_user' || roomType === 'com.nervur.skill_user') {
           try {
             const membersRes = await fetch(
               `${hsUrl}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/joined_members`,
@@ -341,6 +342,20 @@ async function classifyUsers() {
                 if (userId !== brainUserId) {
                   if (roomType === 'com.nervur.test_user') {
                     testUsers.set(userId, { roomId, brainUserId })
+                  } else if (roomType === 'com.nervur.skill_user') {
+                    // Fetch skillType from com.nervur.skill state
+                    let skillType = 'internal'
+                    try {
+                      const skillStateRes = await fetch(
+                        `${hsUrl}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/com.nervur.skill/`,
+                        { headers: headers(token), signal: AbortSignal.timeout(3000) }
+                      )
+                      if (skillStateRes.ok) {
+                        const skillState = await skillStateRes.json()
+                        skillType = skillState.skillType || 'internal'
+                      }
+                    } catch { /* ignore */ }
+                    skillUsers.set(userId, { roomId, brainUserId, skillType })
                   } else {
                     humanUsers.set(userId, { roomId, brainUserId })
                   }
@@ -357,7 +372,7 @@ async function classifyUsers() {
     })
   )
 
-  return { brains, testUsers, humanUsers }
+  return { brains, testUsers, humanUsers, skillUsers }
 }
 
 export async function listUsers() {
@@ -375,7 +390,7 @@ export async function listUsers() {
   const filtered = userIds.filter((id) => id !== conduitBot)
 
   // Classify users by scanning room state
-  const { brains, testUsers, humanUsers } = await classifyUsers()
+  const { brains, testUsers, humanUsers, skillUsers } = await classifyUsers()
 
   // Build set of all users who share any room with brain
   const { hsUrl, token } = getAuth()
@@ -429,8 +444,9 @@ export async function listUsers() {
       const brainInfo = brains.get(userId)
       const testInfo = testUsers.get(userId)
       const humanInfo = humanUsers.get(userId)
-      const role = brainInfo ? 'brain' : testInfo ? 'test' : 'human'
-      const linkedToBrain = !!(testInfo || humanInfo || brainRoommates.has(userId))
+      const skillInfo = skillUsers.get(userId)
+      const role = brainInfo ? 'brain' : testInfo ? 'test' : skillInfo ? 'skill' : 'human'
+      const linkedToBrain = !!(testInfo || humanInfo || skillInfo || brainRoommates.has(userId))
 
       return {
         name: userId,
@@ -441,8 +457,9 @@ export async function listUsers() {
         role,
         linkedToBrain,
         ...(brainInfo && { brainRoomId: brainInfo.roomId }),
-        ...(testInfo && { brainUserId: testInfo.brainUserId }),
-        ...(humanInfo && { brainUserId: humanInfo.brainUserId }),
+        ...(testInfo && { brainUserId: testInfo.brainUserId, roomId: testInfo.roomId }),
+        ...(humanInfo && { brainUserId: humanInfo.brainUserId, roomId: humanInfo.roomId }),
+        ...(skillInfo && { brainUserId: skillInfo.brainUserId, roomId: skillInfo.roomId, skillType: skillInfo.skillType }),
         ...(userId === brainUserId && { isSelf: true })
       }
     })
@@ -451,7 +468,7 @@ export async function listUsers() {
   return users
 }
 
-export async function createUser(username, password, displayName, isTest = false) {
+export async function createUser(username, password, displayName, isTest = false, isSkill = false, skillType = null) {
   const { hsUrl, serverName, token: brainToken, brainUserId } = getAuth()
   const config = readConfig()
   const hsDir = join(process.env.DATA_DIR || join(process.cwd(), 'data'), 'homeserver')
@@ -471,10 +488,10 @@ export async function createUser(username, password, displayName, isTest = false
     }
   }
 
-  // For test users, derive password from brain's registration key
-  if (isTest) {
+  // For test/skill users, derive password from brain's registration key
+  if (isTest || isSkill) {
     const registrationKey = config?.brain?.registrationKey
-    if (!registrationKey) throw new Error('Brain registration key not found — cannot create test user')
+    if (!registrationKey) throw new Error('Brain registration key not found — cannot create user')
     password = deriveBrainPassword(registrationKey, username)
   }
 
@@ -496,9 +513,9 @@ export async function createUser(username, password, displayName, isTest = false
     // Create a room with brain + new user so classifyUsers can link them
     try {
       const newUserId = result.user_id
-      const roomType = isTest ? 'com.nervur.test_user' : 'com.nervur.human_user'
-      const nervurType = isTest ? 'test_user' : 'human_user'
-      const roomName = isTest ? `Test: ${displayName || username}` : `User: ${displayName || username}`
+      const roomType = isTest ? 'com.nervur.test_user' : isSkill ? 'com.nervur.skill_user' : 'com.nervur.human_user'
+      const nervurType = isTest ? 'test_user' : isSkill ? 'skill_user' : 'human_user'
+      const roomName = isTest ? `Test: ${displayName || username}` : isSkill ? `Skill: ${displayName || username}` : `User: ${displayName || username}`
       const createRoomRes = await fetch(`${hsUrl}/_matrix/client/v3/createRoom`, {
         method: 'POST',
         headers: headers(brainToken),
@@ -519,9 +536,22 @@ export async function createUser(username, password, displayName, isTest = false
               content: {
                 type: nervurType,
                 brain_user_id: brainUserId,
-                test: isTest
+                test: isTest,
+                skill: isSkill
               }
-            }
+            },
+            ...(isSkill
+              ? [
+                  {
+                    type: 'com.nervur.skill',
+                    state_key: '',
+                    content: {
+                      skillType: skillType || 'internal',
+                      userId: `@${username}:${serverName}`
+                    }
+                  }
+                ]
+              : [])
           ]
         })
       })
@@ -539,6 +569,27 @@ export async function createUser(username, password, displayName, isTest = false
       }
     } catch (err) {
       console.error('User room setup error:', err.message)
+    }
+
+    // Create skill directory + template for internal skills
+    if (isSkill && skillType === 'internal') {
+      try {
+        const dataDir = process.env.DATA_DIR || join(process.cwd(), 'data')
+        const skillDir = join(dataDir, 'skills', username)
+        mkdirSync(skillDir, { recursive: true })
+        const templatePath = join(skillDir, 'index.js')
+        if (!existsSync(templatePath)) {
+          writeFileSync(templatePath, `export default function(nervur) {
+  nervur.on('message', async (msg) => {
+    // Handle incoming messages
+    console.log('Received:', msg.body)
+  })
+}
+`, 'utf8')
+        }
+      } catch (err) {
+        console.error('Skill template creation error:', err.message)
+      }
     }
 
     return result
@@ -810,7 +861,7 @@ async function parseInviteRooms(invited, hsUrl, token) {
 
 const SYNC_FILTER = JSON.stringify({
   room: {
-    timeline: { limit: 0 },
+    timeline: { limit: 5, types: ['m.room.message'] },
     state: { lazy_load_members: true },
     include_leave: false
   },
@@ -891,6 +942,50 @@ async function runSyncLoop() {
         const fullInvites = await getPendingInvites()
         broadcast('invitations', { invitations: fullInvites })
       }
+
+      // Broadcast new messages from joined rooms
+      if (sseClients.size > 0) {
+        const { brainUserId, serverName } = getAuth()
+        const config = readConfig()
+        const conduitBot = `@conduit:${serverName}`
+        const skipRooms = new Set()
+        if (config?.homeserver?.tuwunel_admin_room_id) skipRooms.add(config.homeserver.tuwunel_admin_room_id)
+        if (config?.brain?.admin_room_id) skipRooms.add(config.brain.admin_room_id)
+
+        const newMessages = []
+
+        for (const [roomId, roomData] of Object.entries(joined)) {
+          if (skipRooms.has(roomId)) continue
+
+          const events = roomData.timeline?.events || []
+          const msgEvents = events.filter((e) => e.type === 'm.room.message' && e.sender !== conduitBot)
+          if (msgEvents.length === 0) continue
+
+          // Get room name (best-effort from state in sync response)
+          let roomName = roomId
+          const nameEvent = (roomData.state?.events || []).find((e) => e.type === 'm.room.name')
+          if (nameEvent?.content?.name) roomName = nameEvent.content.name
+
+          for (const e of msgEvents) {
+            newMessages.push({
+              id: e.event_id,
+              sender: e.sender,
+              body: e.content?.body || '',
+              msgtype: e.content?.msgtype || 'm.text',
+              ...(e.content?.intent !== undefined && { intent: e.content.intent }),
+              ...(e.content?.payload !== undefined && { payload: e.content.payload }),
+              timestamp: e.origin_server_ts,
+              roomId,
+              roomName,
+              fromBrain: e.sender === brainUserId
+            })
+          }
+        }
+
+        if (newMessages.length > 0) {
+          broadcast('messages', { messages: newMessages })
+        }
+      }
     } catch {
       await new Promise((r) => setTimeout(r, 5000))
     }
@@ -923,4 +1018,203 @@ export async function rejectInvite(roomId) {
     throw new Error(err.error || `HTTP ${res.status}`)
   }
   return res.json()
+}
+
+// ── All brain messages (cross-room) ──
+
+/**
+ * Fetch brain messages across all rooms, paginated.
+ * @param {number} limit - max messages to return (one chunk, e.g. 300)
+ * @param {number|null} before - only return messages older than this timestamp (ms). null = most recent.
+ * @returns {{ messages: Array, hasMore: boolean }}
+ */
+export async function getAllBrainMessages(limit = 300, before = null) {
+  const { hsUrl, token, brainUserId, serverName } = getAuth()
+  const config = readConfig()
+  const conduitBot = `@conduit:${serverName}`
+
+  // Rooms to skip: admin room, brain admin room
+  const skipRooms = new Set()
+  if (config?.homeserver?.tuwunel_admin_room_id) skipRooms.add(config.homeserver.tuwunel_admin_room_id)
+  if (config?.brain?.admin_room_id) skipRooms.add(config.brain.admin_room_id)
+
+  // Get brain's joined rooms
+  const joinedRes = await fetch(`${hsUrl}/_matrix/client/v3/joined_rooms`, { headers: headers(token) })
+  if (!joinedRes.ok) throw new Error('Failed to fetch joined rooms')
+  const { joined_rooms } = await joinedRes.json()
+
+  const rooms = (joined_rooms || []).filter((roomId) => !skipRooms.has(roomId))
+  // Fetch enough per room to fill the chunk — overfetch slightly, then trim
+  const perRoomLimit = Math.min(Math.ceil((limit * 1.5) / Math.max(rooms.length, 1)), 100)
+
+  // For each room, fetch name + recent messages in parallel
+  const perRoom = await Promise.all(
+    rooms.map(async (roomId) => {
+      try {
+        const enc = encodeURIComponent(roomId)
+        const [nameRes, msgRes] = await Promise.all([
+          fetch(`${hsUrl}/_matrix/client/v3/rooms/${enc}/state/m.room.name/`, {
+            headers: headers(token),
+            signal: AbortSignal.timeout(5000)
+          }),
+          fetch(`${hsUrl}/_matrix/client/v3/rooms/${enc}/messages?dir=b&limit=${perRoomLimit}`, {
+            headers: headers(token),
+            signal: AbortSignal.timeout(10000)
+          })
+        ])
+
+        const roomName = nameRes.ok ? (await nameRes.json()).name : roomId
+        if (!msgRes.ok) return []
+
+        const data = await msgRes.json()
+        return (data.chunk || [])
+          .filter((e) => e.type === 'm.room.message' && e.sender !== conduitBot)
+          .map((e) => ({
+            id: e.event_id,
+            sender: e.sender,
+            body: e.content?.body || '',
+            msgtype: e.content?.msgtype || 'm.text',
+            ...(e.content?.intent !== undefined && { intent: e.content.intent }),
+            ...(e.content?.payload !== undefined && { payload: e.content.payload }),
+            timestamp: e.origin_server_ts,
+            roomId,
+            roomName,
+            fromBrain: e.sender === brainUserId
+          }))
+      } catch {
+        return []
+      }
+    })
+  )
+
+  let all = perRoom.flat()
+
+  // If paginating, only keep messages strictly before the cursor
+  if (before != null) {
+    all = all.filter((m) => m.timestamp < before)
+  }
+
+  // Sort descending (newest first), take `limit + 1` to check hasMore
+  all.sort((a, b) => b.timestamp - a.timestamp)
+  const hasMore = all.length > limit
+  const chunk = all.slice(0, limit)
+
+  // Return in ascending order (oldest first) for display
+  chunk.reverse()
+  return { messages: chunk, hasMore }
+}
+
+// ── Room messages ──
+
+export async function getRoomMessages(roomId, limit = 50) {
+  const { hsUrl, token } = getAuth()
+  const res = await fetch(
+    `${hsUrl}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/messages?dir=b&limit=${limit}`,
+    { headers: headers(token) }
+  )
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || `HTTP ${res.status}`)
+  }
+  const data = await res.json()
+  return (data.chunk || [])
+    .filter((e) => e.type === 'm.room.message')
+    .map((e) => ({
+      id: e.event_id,
+      sender: e.sender,
+      body: e.content?.body || '',
+      msgtype: e.content?.msgtype || 'm.text',
+      ...(e.content?.intent !== undefined && { intent: e.content.intent }),
+      ...(e.content?.payload !== undefined && { payload: e.content.payload }),
+      timestamp: e.origin_server_ts
+    }))
+    .reverse()
+}
+
+export async function sendRoomMessage(roomId, body, { msgtype = 'm.text', intent, payload } = {}) {
+  const { hsUrl, token } = getAuth()
+  const txnId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  const content = { msgtype, body }
+  if (intent !== undefined) content.intent = intent
+  if (payload !== undefined) content.payload = payload
+  const res = await fetch(
+    `${hsUrl}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txnId}`,
+    {
+      method: 'PUT',
+      headers: headers(token),
+      body: JSON.stringify(content)
+    }
+  )
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || `HTTP ${res.status}`)
+  }
+  return res.json()
+}
+
+// ── Skill state & code ──
+
+export async function getSkillState(roomId) {
+  const { hsUrl, token } = getAuth()
+  const res = await fetch(
+    `${hsUrl}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/com.nervur.skill/`,
+    { headers: headers(token), signal: AbortSignal.timeout(5000) }
+  )
+  if (!res.ok) {
+    if (res.status === 404) return {}
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || `HTTP ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function updateSkillState(roomId, content) {
+  const { hsUrl, token } = getAuth()
+  // Fetch existing state and merge
+  let existing = {}
+  try {
+    existing = await getSkillState(roomId)
+  } catch { /* start fresh */ }
+  const merged = { ...existing, ...content }
+  const txnId = `state_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  const res = await fetch(
+    `${hsUrl}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/com.nervur.skill/`,
+    {
+      method: 'PUT',
+      headers: headers(token),
+      body: JSON.stringify(merged)
+    }
+  )
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || `HTTP ${res.status}`)
+  }
+  return res.json()
+}
+
+export function getSkillCode(skillName) {
+  const dataDir = process.env.DATA_DIR || join(process.cwd(), 'data')
+  const filePath = join(dataDir, 'skills', skillName, 'index.js')
+  if (!existsSync(filePath)) {
+    return { code: '', exists: false }
+  }
+  return { code: readFileSync(filePath, 'utf8'), exists: true }
+}
+
+export function saveSkillCode(skillName, code) {
+  const dataDir = process.env.DATA_DIR || join(process.cwd(), 'data')
+  const skillDir = join(dataDir, 'skills', skillName)
+  mkdirSync(skillDir, { recursive: true })
+  writeFileSync(join(skillDir, 'index.js'), code, 'utf8')
+}
+
+/**
+ * Find the roomId for a skill user by their userId.
+ * Scans classifyUsers results.
+ */
+export async function findSkillRoomId(userId) {
+  const { skillUsers } = await classifyUsers()
+  const info = skillUsers.get(userId)
+  if (!info) throw new Error(`Skill room not found for ${userId}`)
+  return info.roomId
 }

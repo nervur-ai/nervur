@@ -20,6 +20,7 @@ import {
   createUser,
   deactivateUser,
   listRooms,
+  listBrainRooms,
   getRoomMembers,
   createRoom,
   inviteToRoom,
@@ -29,7 +30,15 @@ import {
   addSSEClient,
   startSyncLoop,
   getRegistrationMode,
-  setRegistrationMode
+  setRegistrationMode,
+  getRoomMessages,
+  sendRoomMessage,
+  getAllBrainMessages,
+  getSkillState,
+  updateSkillState,
+  getSkillCode,
+  saveSkillCode,
+  findSkillRoomId
 } from './matrix-admin.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -335,11 +344,11 @@ app.get('/api/homeserver/users', async (_req, res) => {
 app.post('/api/homeserver/users', async (req, res) => {
   const config = readConfig()
   if (config?.homeserver?.type !== 'local') return res.status(400).json({ error: 'Not a local homeserver' })
-  const { username, password, displayName, isTest } = req.body
+  const { username, password, displayName, isTest, isSkill, skillType } = req.body
   if (!username) return res.status(400).json({ error: 'username is required' })
-  if (!isTest && !password) return res.status(400).json({ error: 'password is required for non-test users' })
+  if (!isTest && !isSkill && !password) return res.status(400).json({ error: 'password is required' })
   try {
-    const result = await createUser(username, password, displayName, !!isTest)
+    const result = await createUser(username, password, displayName, !!isTest, !!isSkill, skillType || null)
     res.json({ success: true, ...result })
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -358,6 +367,96 @@ app.delete('/api/homeserver/users/:userId', async (req, res) => {
 })
 
 // ── Room management (local only) ──
+
+app.get('/api/brain/rooms', async (_req, res) => {
+  try {
+    const rooms = await listBrainRooms()
+    res.json({ rooms })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.get('/api/brain/rooms/:id/messages', async (req, res) => {
+  try {
+    const messages = await getRoomMessages(req.params.id, parseInt(req.query.limit) || 50)
+    res.json({ messages })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.post('/api/brain/rooms/:id/messages', async (req, res) => {
+  const { body, msgtype, intent, payload } = req.body
+  if (!body) return res.status(400).json({ error: 'body is required' })
+  try {
+    const opts = {}
+    if (msgtype) opts.msgtype = msgtype
+    if (intent !== undefined) opts.intent = intent
+    if (payload !== undefined) opts.payload = payload
+    const result = await sendRoomMessage(req.params.id, body, opts)
+    res.json({ success: true, ...result })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.get('/api/brain/messages', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 300
+    const before = req.query.before ? parseInt(req.query.before) : null
+    const result = await getAllBrainMessages(limit, before)
+    res.json(result)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ── Skill state & code ──
+
+app.get('/api/skills/:userId/state', async (req, res) => {
+  try {
+    const roomId = await findSkillRoomId(decodeURIComponent(req.params.userId))
+    const state = await getSkillState(roomId)
+    res.json(state)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.put('/api/skills/:userId/state', async (req, res) => {
+  try {
+    const roomId = await findSkillRoomId(decodeURIComponent(req.params.userId))
+    await updateSkillState(roomId, req.body)
+    res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.get('/api/skills/:userId/code', async (req, res) => {
+  try {
+    const userId = decodeURIComponent(req.params.userId)
+    const localpart = userId.replace(/^@/, '').split(':')[0]
+    const result = getSkillCode(localpart)
+    res.json(result)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.put('/api/skills/:userId/code', async (req, res) => {
+  const { code } = req.body
+  if (typeof code !== 'string') return res.status(400).json({ error: 'code is required' })
+  try {
+    const userId = decodeURIComponent(req.params.userId)
+    const localpart = userId.replace(/^@/, '').split(':')[0]
+    saveSkillCode(localpart, code)
+    res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
 
 app.get('/api/homeserver/rooms', async (_req, res) => {
   const config = readConfig()

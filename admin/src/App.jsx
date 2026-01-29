@@ -4,11 +4,14 @@ import Onboarding from './pages/Onboarding.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Brains from './pages/Brains.jsx'
 import TestUsers from './pages/TestUsers.jsx'
+import SkillUsers from './pages/SkillUsers.jsx'
 import HumanUsers from './pages/HumanUsers.jsx'
 import Rooms from './pages/Rooms.jsx'
+import BrainRooms from './pages/BrainRooms.jsx'
 import HSSettings from './pages/HSSettings.jsx'
 import Settings from './pages/Settings.jsx'
 import Invitations from './pages/Invitations.jsx'
+import Messages from './pages/Messages.jsx'
 import Layout from './components/Layout.jsx'
 import './App.css'
 
@@ -43,9 +46,12 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Dashboard config={config} />} />
           <Route path="/invitations" element={<Invitations />} />
+          <Route path="/messages" element={<Messages />} />
+          <Route path="/rooms" element={<BrainRooms config={config} />} />
           {isLocal ? (
             <>
               <Route path="/test-users" element={<TestUsers config={config} />} />
+              <Route path="/skills" element={<SkillUsers config={config} />} />
               <Route path="/homeserver" element={<Navigate to="/homeserver/settings" replace />} />
               <Route path="/homeserver/brains" element={<Brains config={config} />} />
               <Route path="/homeserver/users" element={<HumanUsers config={config} />} />

@@ -20,7 +20,9 @@ export function UserAvatar({ role, isSelf, deactivated }) {
         : 'bg-nervur-100 text-nervur-600'
       : role === 'test'
         ? 'bg-amber-100 text-amber-600'
-        : 'bg-green-100 text-green-600'
+        : role === 'skill'
+          ? 'bg-purple-100 text-purple-600'
+          : 'bg-green-100 text-green-600'
 
   const icon =
     role === 'brain' ? (
@@ -53,18 +55,25 @@ export function RoleBadge({ role, isSelf, deactivated }) {
   const styles = {
     brain: isSelf ? 'bg-nervur-200 text-nervur-800' : 'bg-nervur-100 text-nervur-700',
     test: 'bg-amber-100 text-amber-700',
+    skill: 'bg-purple-100 text-purple-700',
     human: 'bg-green-100 text-green-700'
   }
   const labels = {
     brain: isSelf ? 'Brain (self)' : 'Brain',
     test: 'Test',
+    skill: 'Skill',
     human: 'User'
   }
 
   return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${styles[role]}`}>{labels[role]}</span>
 }
 
-export function UserCard({ user, onDeactivate, deactivating }) {
+export function UserCard({ user, onDeactivate, deactivating, tagLabel, tagColor, hideRoleBadge }) {
+  const tagStyles = {
+    green: 'bg-green-100 text-green-700',
+    red: 'bg-red-100 text-red-700'
+  }
+
   return (
     <div className="flex items-center justify-between gap-4">
       <div className="flex items-center gap-3 min-w-0">
@@ -72,7 +81,14 @@ export function UserCard({ user, onDeactivate, deactivating }) {
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <h3 className="font-semibold text-gray-900 truncate">{user.displayname || user.name}</h3>
-            <RoleBadge role={user.role} isSelf={user.isSelf} deactivated={user.deactivated} />
+            {!hideRoleBadge && <RoleBadge role={user.role} isSelf={user.isSelf} deactivated={user.deactivated} />}
+            {tagLabel && (
+              <span
+                className={`text-xs px-2 py-0.5 rounded-full font-medium ${tagStyles[tagColor] || tagStyles.green}`}
+              >
+                {tagLabel}
+              </span>
+            )}
           </div>
           <p className="font-mono text-xs text-gray-400 mt-0.5 truncate">{user.name}</p>
         </div>

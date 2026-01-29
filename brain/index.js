@@ -1,6 +1,7 @@
 import app from './app.js'
 import { readConfig, updateConfig } from './config.js'
 import { deriveBrainPassword } from './homeserver.js'
+import { bootInternalSkills } from './skills.js'
 
 const PORT = process.env.PORT || 3000
 
@@ -55,4 +56,5 @@ async function validateSession() {
 app.listen(PORT, async () => {
   console.log(`Brain listening on port ${PORT}`)
   await validateSession()
+  await bootInternalSkills()
 })

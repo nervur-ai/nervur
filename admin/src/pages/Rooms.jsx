@@ -17,10 +17,6 @@ export default function Rooms({ config }) {
   const [error, setError] = useState(null)
   const [expanded, setExpanded] = useState(null)
   const [members, setMembers] = useState({})
-  const [showCreate, setShowCreate] = useState(false)
-  const [creating, setCreating] = useState(false)
-  const [createError, setCreateError] = useState(null)
-  const [form, setForm] = useState({ name: '', topic: '' })
   const [inviteForm, setInviteForm] = useState({ roomId: null, userId: '' })
   const [inviting, setInviting] = useState(false)
   const [inviteError, setInviteError] = useState(null)
@@ -66,27 +62,6 @@ export default function Rooms({ config }) {
     }
   }
 
-  const handleCreate = async (e) => {
-    e.preventDefault()
-    setCreating(true)
-    setCreateError(null)
-    try {
-      const res = await fetch('/api/homeserver/rooms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form)
-      })
-      const data = await res.json()
-      if (data.error) throw new Error(data.error)
-      setForm({ name: '', topic: '' })
-      setShowCreate(false)
-      fetchRooms()
-    } catch (err) {
-      setCreateError(err.message)
-    }
-    setCreating(false)
-  }
-
   const handleInvite = async (e) => {
     e.preventDefault()
     setInviting(true)
@@ -117,8 +92,8 @@ export default function Rooms({ config }) {
     <div>
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Rooms</h1>
-          <p className="text-gray-500 text-sm mt-1">All rooms on your homeserver</p>
+          <h1 className="text-3xl font-bold text-gray-900">Other Rooms</h1>
+          <p className="text-gray-500 text-sm mt-1">Rooms on your homeserver where the brain is not a member</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -140,61 +115,8 @@ export default function Rooms({ config }) {
             )}
             Refresh
           </button>
-          <button
-            onClick={() => {
-              setShowCreate(!showCreate)
-              setCreateError(null)
-            }}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-nervur-600 text-white rounded-lg text-sm font-medium hover:bg-nervur-700"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            {showCreate ? 'Cancel' : 'Create Room'}
-          </button>
         </div>
       </div>
-
-      {/* Create form */}
-      {showCreate && (
-        <div className="mb-6 bg-white rounded-xl shadow-sm p-6 border-l-4 border-nervur-400">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Create Room</h2>
-          <form onSubmit={handleCreate} className="space-y-4">
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Name</label>
-              <input
-                type="text"
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="Room name"
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-nervur-500 focus:border-transparent"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Topic (optional)</label>
-              <input
-                type="text"
-                value={form.topic}
-                onChange={(e) => setForm((f) => ({ ...f, topic: e.target.value }))}
-                placeholder="What's this room about?"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-nervur-500 focus:border-transparent"
-              />
-            </div>
-            {createError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{createError}</div>
-            )}
-            <button
-              type="submit"
-              disabled={creating}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-nervur-600 text-white rounded-lg hover:bg-nervur-700 disabled:opacity-50"
-            >
-              {creating && <Spinner className="w-4 h-4 !text-white" />}
-              {creating ? 'Creating...' : 'Create'}
-            </button>
-          </form>
-        </div>
-      )}
 
       {error && <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}
 

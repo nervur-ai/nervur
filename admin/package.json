@@ -1,6 +1,6 @@
 {
   "name": "nervur-admin",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,6 +11,7 @@
     "lint:fix": "eslint --fix src/"
   },
   "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.13.0"
