@@ -175,6 +175,7 @@ export default function Layout({ children, config }) {
   const location = useLocation()
   const isLocal = config?.homeserver?.type === 'local'
   const brainName = config?.brain?.name
+  const brainUserId = config?.brain?.user_id
   const hsActive = location.pathname.startsWith('/homeserver')
 
   const [version, setVersion] = useState(null)
@@ -220,6 +221,7 @@ export default function Layout({ children, config }) {
           {brainName && (
             <div className="mt-3 px-3 py-1.5 bg-nervur-800 rounded-md">
               <p className="text-white text-sm font-semibold truncate">{brainName}</p>
+              {brainUserId && <p className="text-nervur-400 text-xs truncate mt-0.5">{brainUserId}</p>}
             </div>
           )}
         </div>
