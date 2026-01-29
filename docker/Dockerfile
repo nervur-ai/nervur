@@ -15,6 +15,8 @@ FROM node:20-alpine
 LABEL org.opencontainers.image.source=https://github.com/nervur-ai/nervur
 WORKDIR /app
 
+RUN apk add --no-cache docker-cli docker-cli-compose curl
+
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
