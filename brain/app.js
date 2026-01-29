@@ -497,7 +497,6 @@ app.post('/api/homeserver/:action', async (req, res) => {
 })
 
 // Serve admin UI in production (built files from admin/dist/)
-import { existsSync } from 'fs'
 const adminDist = join(__dirname, '..', 'admin', 'dist')
 if (existsSync(adminDist)) {
   app.use(express.static(adminDist))
