@@ -142,6 +142,8 @@ services:
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - DOCKER_API_VERSION=1.44
     command: --interval 300 nervur-homeserver nervur-brain
 
 volumes:
