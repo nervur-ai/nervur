@@ -1,7 +1,7 @@
 import express from 'express'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
-import { rmSync } from 'fs'
+import { rmSync, readFileSync, writeFileSync, existsSync } from 'fs'
 import { readConfig, writeConfig, updateConfig, deleteConfig, deleteConfigKey, isInitialized } from './config.js'
 import { verifyHomeserver, generateRegistrationKey, registerBrain, deriveBrainPassword, runPreflightChecks, findExistingBrainAdminRoom, createBrainAdminRoom, joinTuwunelAdminRoom } from './homeserver.js'
 import { localRoutes } from '../homeserver/index.js'
@@ -20,6 +20,29 @@ app.use('/api/onboarding/local', localRoutes)
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' })
+})
+
+// Version info — current + latest from GitHub
+app.get('/api/version', async (_req, res) => {
+  try {
+    const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8'))
+    const current = pkg.version
+
+    let latest = null
+    try {
+      const r = await fetch('https://raw.githubusercontent.com/nervur-ai/nervur/master/package.json', { signal: AbortSignal.timeout(5000) })
+      if (r.ok) {
+        const remote = await r.json()
+        latest = remote.version
+      }
+    } catch {
+      // GitHub unreachable — that's fine, just don't show latest
+    }
+
+    res.json({ current, latest })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
 })
 
 app.get('/api/status', (req, res) => {
@@ -330,13 +353,72 @@ app.get('/api/homeserver/registration-config', async (_req, res) => {
     })
     const data = await r.json()
     if (data.errcode === 'M_FORBIDDEN') {
-      res.json({ registrationEnabled: false })
+      res.json({ mode: 'closed' })
     } else if (r.status === 401 && data.flows) {
       const stages = data.flows.flatMap(f => f.stages || [])
-      res.json({ registrationEnabled: true, stages })
+      const hasToken = stages.includes('m.login.registration_token')
+      const hasDummy = stages.includes('m.login.dummy')
+      // If only dummy (no token required) → open; if token required → token
+      res.json({ mode: hasDummy && !hasToken ? 'open' : hasToken ? 'token' : 'open', stages })
     } else {
-      res.json({ registrationEnabled: true, stages: [] })
+      res.json({ mode: 'open', stages: [] })
     }
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Set registration mode (local only) — edits tuwunel.toml and restarts
+// Modes: closed (no registration), token (registration_token required), open (anyone)
+app.post('/api/homeserver/registration-config', async (req, res) => {
+  const config = readConfig()
+  if (config?.homeserver?.type !== 'local') return res.status(400).json({ error: 'Not a local homeserver' })
+
+  const { mode } = req.body
+  if (!['closed', 'token', 'open'].includes(mode)) {
+    return res.status(400).json({ error: 'mode must be "closed", "token", or "open"' })
+  }
+
+  const tomlPath = join(HS_DIR, 'tuwunel.toml')
+  if (!existsSync(tomlPath)) return res.status(400).json({ error: 'tuwunel.toml not found' })
+
+  try {
+    let toml = readFileSync(tomlPath, 'utf8')
+
+    // Extract existing registration_token value (we always preserve it so token mode can be re-enabled)
+    const tokenMatch = toml.match(/^#?\s*registration_token\s*=\s*"([^"]+)"/m)
+    const existingToken = tokenMatch?.[1]
+
+    // Remove existing registration lines (we'll rewrite them)
+    toml = toml.replace(/^#?\s*allow_registration\s*=\s*.+\n?/gm, '')
+    toml = toml.replace(/^#?\s*registration_token\s*=\s*.+\n?/gm, '')
+    toml = toml.replace(/^#?\s*yes_i_am_very_very_sure_i_want_an_open_registration_server_prone_to_abuse\s*=\s*.+\n?/gm, '')
+
+    // Find insertion point — after database_path line
+    const insertAfter = /^database_path\s*=.+$/m
+    let regBlock = ''
+
+    if (mode === 'closed') {
+      regBlock = 'allow_registration = false'
+      if (existingToken) regBlock += `\n# registration_token = "${existingToken}"`
+    } else if (mode === 'token') {
+      regBlock = 'allow_registration = true'
+      if (existingToken) regBlock += `\nregistration_token = "${existingToken}"`
+    } else {
+      // open
+      regBlock = 'allow_registration = true'
+      regBlock += '\nyes_i_am_very_very_sure_i_want_an_open_registration_server_prone_to_abuse = true'
+      if (existingToken) regBlock += `\n# registration_token = "${existingToken}"`
+    }
+
+    toml = toml.replace(insertAfter, (match) => `${match}\n${regBlock}`)
+    writeFileSync(tomlPath, toml, 'utf8')
+
+    // Restart homeserver to pick up the new config
+    await composeRestart(HS_DIR)
+    await new Promise(r => setTimeout(r, 2000))
+
+    res.json({ success: true, mode })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 
 function HomeIcon() {
@@ -47,11 +48,27 @@ const hsSubLinks = [
   { name: 'HS Settings', href: '/homeserver/settings' },
 ]
 
+function compareVersions(a, b) {
+  const pa = a.split('.').map(Number)
+  const pb = b.split('.').map(Number)
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] || 0) < (pb[i] || 0)) return -1
+    if ((pa[i] || 0) > (pb[i] || 0)) return 1
+  }
+  return 0
+}
+
 export default function Layout({ children, config }) {
   const location = useLocation()
   const isLocal = config?.homeserver?.type === 'local'
   const brainName = config?.brain?.name
   const hsActive = location.pathname.startsWith('/homeserver')
+
+  const [version, setVersion] = useState(null)
+
+  useEffect(() => {
+    fetch('/api/version').then(r => r.json()).then(setVersion).catch(() => {})
+  }, [])
 
   return (
     <div className="min-h-screen flex">
@@ -155,7 +172,14 @@ export default function Layout({ children, config }) {
           </NavLink>
         </nav>
         <div className="p-4 border-t border-nervur-800">
-          <p className="text-nervur-500 text-xs">v0.1.0</p>
+          <p className="text-nervur-500 text-xs">
+            {version ? `v${version.current}` : '...'}
+          </p>
+          {version?.latest && compareVersions(version.current, version.latest) < 0 && (
+            <p className="text-amber-400 text-xs mt-1">
+              Update available: v{version.latest}
+            </p>
+          )}
         </div>
       </aside>
 

@@ -7,18 +7,6 @@ const Spinner = ({ className = 'w-4 h-4' }) => (
   </svg>
 )
 
-const CheckIcon = () => (
-  <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-  </svg>
-)
-
-const ErrorIcon = () => (
-  <svg className="w-4 h-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-  </svg>
-)
-
 export default function HSSettings({ config }) {
   const hs = config?.homeserver || {}
   const hasPublicDomain = !!hs.domain
@@ -26,6 +14,7 @@ export default function HSSettings({ config }) {
   const [containers, setContainers] = useState(null)
   const [hsAction, setHsAction] = useState('')
   const [regConfig, setRegConfig] = useState(null)
+  const [regSaving, setRegSaving] = useState(false)
 
   useEffect(() => {
     fetchContainerStatus()
@@ -62,6 +51,24 @@ export default function HSSettings({ config }) {
       const data = await res.json()
       if (!data.error) setRegConfig(data)
     } catch {}
+  }
+
+  const setRegMode = async (mode) => {
+    if (regSaving || regConfig?.mode === mode) return
+    setRegSaving(true)
+    try {
+      const res = await fetch('/api/homeserver/registration-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode })
+      })
+      const data = await res.json()
+      if (data.success) {
+        await fetchRegConfig()
+        fetchContainerStatus()
+      }
+    } catch {}
+    setRegSaving(false)
   }
 
   const hsRunning = containers?.homeserver?.running
@@ -148,23 +155,36 @@ export default function HSSettings({ config }) {
               <span>Checking registration...</span>
             </div>
           ) : (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm">
-                {regConfig.registrationEnabled ? <CheckIcon /> : <ErrorIcon />}
-                <span className="text-gray-700">
-                  Registration is {regConfig.registrationEnabled ? 'enabled' : 'disabled'}
-                </span>
-              </div>
-              {regConfig.stages?.length > 0 && (
-                <div className="text-sm">
-                  <span className="text-gray-500">Auth stages:</span>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {regConfig.stages.map(s => (
-                      <span key={s} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-                        {s}
-                      </span>
-                    ))}
+            <div className={`space-y-1 ${regSaving ? 'opacity-50 pointer-events-none' : ''}`}>
+              {[
+                { mode: 'closed', label: 'Closed', desc: 'No one can register. Only existing users can log in.' },
+                { mode: 'token', label: 'Token only', desc: 'Users need a registration token to create an account.' },
+                { mode: 'open', label: 'Open', desc: 'Anyone can register an account freely.' }
+              ].map(({ mode, label, desc }) => (
+                <button
+                  key={mode}
+                  onClick={() => setRegMode(mode)}
+                  className={`w-full flex items-start gap-3 p-3 rounded-lg text-left transition-colors ${
+                    regConfig.mode === mode
+                      ? 'bg-nervur-50 ring-1 ring-nervur-300'
+                      : 'hover:bg-gray-50'
+                  }`}
+                >
+                  <span className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
+                    regConfig.mode === mode ? 'border-nervur-600' : 'border-gray-300'
+                  }`}>
+                    {regConfig.mode === mode && <span className="w-2 h-2 rounded-full bg-nervur-600" />}
+                  </span>
+                  <div>
+                    <span className="text-sm font-medium text-gray-900">{label}</span>
+                    <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
                   </div>
+                </button>
+              ))}
+              {regSaving && (
+                <div className="flex items-center gap-2 text-sm text-gray-400 pt-2">
+                  <Spinner />
+                  <span>Restarting homeserver...</span>
                 </div>
               )}
             </div>
