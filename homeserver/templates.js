@@ -8,8 +8,10 @@ export function generateDockerCompose({
   containerName = 'nervur-homeserver',
   dataDir = './data',
   port = 8008,
-  tunnelToken
+  tunnelToken,
+  configDir
 } = {}) {
+  const tomlPath = configDir ? `${configDir}/tuwunel.toml` : './tuwunel.toml'
   let yml = `services:
   homeserver:
     image: ghcr.io/matrix-construct/tuwunel:latest
@@ -18,7 +20,7 @@ export function generateDockerCompose({
     ports:
       - "${port}:8008"
     volumes:
-      - ./tuwunel.toml:/etc/tuwunel.toml:ro
+      - ${tomlPath}:/etc/tuwunel.toml:ro
       - ${dataDir}:/data
     environment:
       - TUWUNEL_CONFIG=/etc/tuwunel.toml

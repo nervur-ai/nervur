@@ -10,7 +10,7 @@ import {
   getContainerStatus,
   findTuwunelContainers,
   ensureNetwork,
-  connectToNetwork
+  resolveHostPath
 } from './docker.js'
 import { checkPorts, checkWritePermissions } from './validation.js'
 import { generateDockerCompose, generateTuwunelConfig, generateSecret } from './templates.js'
@@ -109,7 +109,6 @@ export async function runPreflight(hsDir) {
 
 export async function configure(hsDir, { serverName = 'nervur.local', port = HS_PORT } = {}) {
   const containerName = CONTAINER_NAME
-  const dataDir = './data'
 
   // Check if server_name changed since last setup.
   // Tuwunel stores server_name in RocksDB and cannot change it after first startup.
@@ -144,8 +143,21 @@ export async function configure(hsDir, { serverName = 'nervur.local', port = HS_
   // Ensure directories exist
   mkdirSync(join(hsDir, 'data'), { recursive: true })
 
+  // When running in Docker, compose bind mounts need host-absolute paths
+  // because Docker daemon resolves paths on the host, not inside the brain container.
+  let dataDir = './data'
+  let configDir = null
+  if (isDocker) {
+    const hostDataPath = await resolveHostPath('nervur-brain', '/app/data')
+    if (hostDataPath) {
+      const hostHsDir = `${hostDataPath}/homeserver`
+      dataDir = `${hostHsDir}/data`
+      configDir = hostHsDir
+    }
+  }
+
   // Write config files
-  writeFileSync(join(hsDir, 'docker-compose.yml'), generateDockerCompose({ containerName, dataDir, port }))
+  writeFileSync(join(hsDir, 'docker-compose.yml'), generateDockerCompose({ containerName, dataDir, port, configDir }))
   writeFileSync(join(hsDir, 'tuwunel.toml'), generateTuwunelConfig({ serverName, port, registrationSecret }))
 
   return { success: true, registrationSecret, containerName, serverName, port }

@@ -110,6 +110,22 @@ export async function connectToNetwork(container, network = 'nervur') {
   }
 }
 
+// Resolve the host filesystem path for a container's mount point.
+// When brain runs in Docker, paths inside the container (e.g. /app/data)
+// differ from paths on the host (e.g. /var/lib/docker/volumes/..._data).
+// Docker daemon needs host paths for bind mounts in child compose files.
+export async function resolveHostPath(containerName, mountDest) {
+  try {
+    const { stdout } = await run('docker', [
+      'inspect', containerName,
+      '--format', `{{range .Mounts}}{{if eq .Destination "${mountDest}"}}{{.Source}}{{end}}{{end}}`
+    ])
+    return stdout || null
+  } catch {
+    return null
+  }
+}
+
 // Find all containers (running and stopped) using the Tuwunel image (any tag)
 export async function findTuwunelContainers() {
   try {

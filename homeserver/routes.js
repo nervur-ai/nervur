@@ -6,7 +6,7 @@ import { readConfig, updateConfig } from '../brain/config.js'
 import { runPreflight, configure, pull, start, verify, getStatus } from './provision.js'
 import { checkPort } from './validation.js'
 import { generateDockerCompose } from './templates.js'
-import { composeUp, composeRestart, waitForHealthy, getContainerStatus, getContainerLogs } from './docker.js'
+import { composeUp, composeRestart, waitForHealthy, getContainerStatus, getContainerLogs, resolveHostPath } from './docker.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), 'data')
@@ -186,7 +186,18 @@ router.post('/networking/configure-tunnel', async (req, res) => {
 
     // If tunnelToken provided, rewrite docker-compose with cloudflared service
     if (tunnelToken) {
-      const compose = generateDockerCompose({ port, tunnelToken })
+      let dataDir = './data'
+      let configDir = null
+      const isDocker = existsSync('/.dockerenv')
+      if (isDocker) {
+        const hostDataPath = await resolveHostPath('nervur-brain', '/app/data')
+        if (hostDataPath) {
+          const hostHsDir = `${hostDataPath}/homeserver`
+          dataDir = `${hostHsDir}/data`
+          configDir = hostHsDir
+        }
+      }
+      const compose = generateDockerCompose({ port, tunnelToken, dataDir, configDir })
       writeFileSync(join(HS_DIR, 'docker-compose.yml'), compose, 'utf8')
     }
 
