@@ -128,20 +128,20 @@ const themes = {
     switchLabel: 'text-nervur-500'
   },
   local: {
-    aside: 'bg-local-900',
-    header: 'text-local-400',
-    badge: 'bg-local-800',
-    badgeText: 'text-local-400',
-    active: 'bg-local-700 text-white',
-    inactive: 'text-local-300 hover:bg-local-800 hover:text-white',
-    subActive: 'text-white bg-local-600',
-    subInactive: 'text-local-400 hover:text-white hover:bg-local-800',
-    border: 'border-local-800',
-    switchBg: 'bg-local-800',
-    switchActive: 'bg-local-600 text-white shadow-sm font-medium',
-    switchInactive: 'text-local-400 hover:text-local-200',
-    versionText: 'text-local-500',
-    switchLabel: 'text-local-500'
+    aside: 'bg-emerald-950',
+    header: 'text-emerald-400',
+    badge: 'bg-emerald-900',
+    badgeText: 'text-emerald-400',
+    active: 'bg-emerald-800 text-white',
+    inactive: 'text-emerald-300 hover:bg-emerald-900 hover:text-white',
+    subActive: 'text-white bg-emerald-700',
+    subInactive: 'text-emerald-400 hover:text-white hover:bg-emerald-900',
+    border: 'border-emerald-900',
+    switchBg: 'bg-emerald-900',
+    switchActive: 'bg-emerald-700 text-white shadow-sm font-medium',
+    switchInactive: 'text-emerald-400 hover:text-emerald-200',
+    versionText: 'text-emerald-500',
+    switchLabel: 'text-emerald-500'
   }
 }
 
