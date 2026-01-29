@@ -9,14 +9,22 @@ vi.mock('../homeserver.js', () => ({
   verifyHomeserver: vi.fn(),
   generateRegistrationKey: vi.fn(),
   registerBrain: vi.fn(),
+  deriveBrainPassword: vi.fn(),
   runPreflightChecks: vi.fn(),
   findExistingBrainAdminRoom: vi.fn(),
   createBrainAdminRoom: vi.fn(),
   joinTuwunelAdminRoom: vi.fn()
 }))
 
-const { verifyHomeserver, generateRegistrationKey, registerBrain, runPreflightChecks, findExistingBrainAdminRoom, createBrainAdminRoom, joinTuwunelAdminRoom } =
-  await import('../homeserver.js')
+const {
+  verifyHomeserver,
+  generateRegistrationKey,
+  registerBrain,
+  runPreflightChecks,
+  findExistingBrainAdminRoom,
+  createBrainAdminRoom,
+  joinTuwunelAdminRoom
+} = await import('../homeserver.js')
 const { default: app } = await import('../app.js')
 
 afterEach(() => {
@@ -299,7 +307,11 @@ describe('POST /api/onboarding/complete', () => {
     writeConfig({
       homeserver: { url: 'http://localhost:8008', serverName: 'localhost', type: 'local' },
       brain: { user_id: '@brain:localhost', access_token: 'syt_abc', registrationKey: 'test-key' },
-      onboarding: { step: 'ready', path: 'local', networking: { networkMode: 'tunnel', domain: 'brain.example.com', tunnelToken: 'tok_123' } }
+      onboarding: {
+        step: 'ready',
+        path: 'local',
+        networking: { networkMode: 'tunnel', domain: 'brain.example.com', tunnelToken: 'tok_123' }
+      }
     })
 
     const res = await request(app).post('/api/onboarding/complete')

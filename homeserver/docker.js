@@ -117,8 +117,10 @@ export async function connectToNetwork(container, network = 'nervur') {
 export async function resolveHostPath(containerName, mountDest) {
   try {
     const { stdout } = await run('docker', [
-      'inspect', containerName,
-      '--format', `{{range .Mounts}}{{if eq .Destination "${mountDest}"}}{{.Source}}{{end}}{{end}}`
+      'inspect',
+      containerName,
+      '--format',
+      `{{range .Mounts}}{{if eq .Destination "${mountDest}"}}{{.Source}}{{end}}{{end}}`
     ])
     return stdout || null
   } catch {

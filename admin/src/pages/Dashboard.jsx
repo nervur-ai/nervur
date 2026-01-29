@@ -3,7 +3,11 @@ import { useState, useEffect } from 'react'
 const Spinner = ({ className = 'w-4 h-4' }) => (
   <svg className={`animate-spin text-nervur-500 ${className}`} fill="none" viewBox="0 0 24 24">
     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+    <path
+      className="opacity-75"
+      fill="currentColor"
+      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+    />
   </svg>
 )
 
@@ -38,7 +42,9 @@ export default function Dashboard({ config }) {
       const res = await fetch('/api/homeserver/status')
       const data = await res.json()
       if (data.available) setContainerStatus(data)
-    } catch {}
+    } catch {
+      /* ignore */
+    }
   }
 
   const hsRunning = containerStatus?.homeserver?.running
@@ -73,16 +79,20 @@ export default function Dashboard({ config }) {
         <div className="bg-white rounded-xl shadow-sm p-5">
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm text-gray-500">Homeserver</p>
-            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-              hsCheck.status === 'ok' ? 'bg-green-100 text-green-700' :
-              hsCheck.status === 'error' ? 'bg-red-100 text-red-700' :
-              'bg-gray-100 text-gray-500'
-            }`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${
-                hsCheck.status === 'ok' ? 'bg-green-500' :
-                hsCheck.status === 'error' ? 'bg-red-500' :
-                'bg-gray-400'
-              }`} />
+            <span
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                hsCheck.status === 'ok'
+                  ? 'bg-green-100 text-green-700'
+                  : hsCheck.status === 'error'
+                    ? 'bg-red-100 text-red-700'
+                    : 'bg-gray-100 text-gray-500'
+              }`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  hsCheck.status === 'ok' ? 'bg-green-500' : hsCheck.status === 'error' ? 'bg-red-500' : 'bg-gray-400'
+                }`}
+              />
               {hsCheck.status === 'ok' ? 'Healthy' : hsCheck.status === 'error' ? 'Down' : 'Checking'}
             </span>
           </div>
@@ -94,10 +104,13 @@ export default function Dashboard({ config }) {
         <div className="bg-white rounded-xl shadow-sm p-5">
           <p className="text-sm text-gray-500 mb-3">Network</p>
           <p className="font-medium text-gray-900 text-sm">
-            {!isLocal ? 'Remote' :
-             containerStatus?.cloudflared && containerStatus.cloudflared.status !== 'not_found'
-               ? 'Cloudflare Tunnel'
-               : hasPublicDomain ? 'Public (Direct)' : 'Local only'}
+            {!isLocal
+              ? 'Remote'
+              : containerStatus?.cloudflared && containerStatus.cloudflared.status !== 'not_found'
+                ? 'Cloudflare Tunnel'
+                : hasPublicDomain
+                  ? 'Public (Direct)'
+                  : 'Local only'}
           </p>
           {isLocal && containerStatus && (
             <div className="flex items-center gap-3 mt-1">
@@ -111,9 +124,7 @@ export default function Dashboard({ config }) {
               )}
             </div>
           )}
-          {hasPublicDomain && (
-            <p className="font-mono text-xs text-gray-400 mt-0.5">{hs.domain}</p>
-          )}
+          {hasPublicDomain && <p className="font-mono text-xs text-gray-400 mt-0.5">{hs.domain}</p>}
         </div>
 
         {/* Brain */}

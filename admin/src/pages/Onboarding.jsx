@@ -2,12 +2,7 @@ import { useReducer, useEffect } from 'react'
 import ServerStep from './ServerStep.jsx'
 import BrainStep from './BrainStep.jsx'
 import NetworkingStep from './NetworkingStep.jsx'
-import {
-  onboardingReducer,
-  createInitialState,
-  getStepTitles,
-  ACTIONS
-} from '../onboarding/machine.js'
+import { onboardingReducer, createInitialState, getStepTitles, ACTIONS } from '../onboarding/machine.js'
 
 export default function Onboarding({ savedConfig, onComplete }) {
   const [ctx, dispatch] = useReducer(onboardingReducer, undefined, createInitialState)
@@ -22,7 +17,9 @@ export default function Onboarding({ savedConfig, onComplete }) {
         onComplete(completeData.config)
         return
       }
-    } catch {}
+    } catch {
+      /* ignore */
+    }
     // Fallback: fetch status
     try {
       const res = await fetch('/api/status')
@@ -31,7 +28,9 @@ export default function Onboarding({ savedConfig, onComplete }) {
         onComplete(data.config)
         return
       }
-    } catch {}
+    } catch {
+      /* ignore */
+    }
     // Last resort
     onComplete({ homeserver: { url: ctx.server?.url, serverName: ctx.server?.serverName }, brain: ctx.brain })
   }
@@ -73,37 +72,39 @@ export default function Onboarding({ savedConfig, onComplete }) {
         </div>
 
         {/* Progress dots */}
-        {stepTitles && <div className="flex justify-center mb-8">
-          {stepTitles.map((s, index) => {
-            const isComplete = index < currentStepIndex
-            const isCurrent = index === currentStepIndex
-            return (
-              <div key={s.id} className="flex items-center">
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${
-                    isComplete
-                      ? 'bg-green-500 text-white'
-                      : isCurrent
-                        ? 'bg-nervur-500 text-white'
-                        : 'bg-nervur-800 text-nervur-500'
-                  }`}
-                  title={s.title}
-                >
-                  {isComplete ? (
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  ) : (
-                    index + 1
+        {stepTitles && (
+          <div className="flex justify-center mb-8">
+            {stepTitles.map((s, index) => {
+              const isComplete = index < currentStepIndex
+              const isCurrent = index === currentStepIndex
+              return (
+                <div key={s.id} className="flex items-center">
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${
+                      isComplete
+                        ? 'bg-green-500 text-white'
+                        : isCurrent
+                          ? 'bg-nervur-500 text-white'
+                          : 'bg-nervur-800 text-nervur-500'
+                    }`}
+                    title={s.title}
+                  >
+                    {isComplete ? (
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    ) : (
+                      index + 1
+                    )}
+                  </div>
+                  {index < stepTitles.length - 1 && (
+                    <div className={`w-12 h-0.5 ${isComplete ? 'bg-green-500' : 'bg-nervur-800'}`} />
                   )}
                 </div>
-                {index < stepTitles.length - 1 && (
-                  <div className={`w-12 h-0.5 ${isComplete ? 'bg-green-500' : 'bg-nervur-800'}`} />
-                )}
-              </div>
-            )
-          })}
-        </div>}
+              )
+            })}
+          </div>
+        )}
 
         {/* Resume message */}
         {ctx.resumeMessage && (
@@ -135,27 +136,15 @@ export default function Onboarding({ savedConfig, onComplete }) {
           )}
 
           {/* Brain */}
-          {ctx.step === 'brain' && ctx.server && (
-            <BrainStep
-              ctx={ctx}
-              dispatch={dispatch}
-              savedConfig={savedConfig}
-            />
-          )}
+          {ctx.step === 'brain' && ctx.server && <BrainStep ctx={ctx} dispatch={dispatch} savedConfig={savedConfig} />}
 
           {/* Network (local only) */}
           {ctx.step === 'network' && ctx.path === 'local' && (
-            <NetworkingStep
-              ctx={ctx}
-              dispatch={dispatch}
-              savedConfig={savedConfig}
-            />
+            <NetworkingStep ctx={ctx} dispatch={dispatch} savedConfig={savedConfig} />
           )}
 
           {/* Ready */}
-          {ctx.step === 'ready' && (
-            <ReadyStep server={ctx.server} brain={ctx.brain} />
-          )}
+          {ctx.step === 'ready' && <ReadyStep server={ctx.server} brain={ctx.brain} />}
         </div>
       </div>
     </div>

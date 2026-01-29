@@ -90,7 +90,12 @@ export default function NetworkingStep({ ctx, dispatch, savedConfig }) {
 
     if (tunnelOk) {
       setChecks([
-        { id: 'tunnel', label: 'Check public endpoint', status: 'pass', message: `Reachable (${tunnelData.versions?.length || 0} API versions)` },
+        {
+          id: 'tunnel',
+          label: 'Check public endpoint',
+          status: 'pass',
+          message: `Reachable (${tunnelData.versions?.length || 0} API versions)`
+        },
         { id: 'container', label: 'Check cloudflared container', status: 'pass', message: 'Tunnel active' }
       ])
       setPublicUrl(tunnelData.publicUrl)
@@ -105,10 +110,15 @@ export default function NetworkingStep({ ctx, dispatch, savedConfig }) {
     }
 
     // Tunnel not reachable — check WHY by inspecting the cloudflared container
-    setChecks(prev => prev.map(c =>
-      c.id === 'tunnel' ? { ...c, status: 'fail', message: tunnelData?.error || 'Not reachable' } :
-      c.id === 'container' ? { ...c, status: 'checking', message: 'Inspecting cloudflared container...' } : c
-    ))
+    setChecks((prev) =>
+      prev.map((c) =>
+        c.id === 'tunnel'
+          ? { ...c, status: 'fail', message: tunnelData?.error || 'Not reachable' }
+          : c.id === 'container'
+            ? { ...c, status: 'checking', message: 'Inspecting cloudflared container...' }
+            : c
+      )
+    )
 
     let containerData = null
     try {
@@ -119,9 +129,13 @@ export default function NetworkingStep({ ctx, dispatch, savedConfig }) {
     }
 
     if (containerData.running) {
-      setChecks(prev => prev.map(c =>
-        c.id === 'container' ? { ...c, status: 'pass', message: 'Cloudflared running — reconfiguring homeserver...' } : c
-      ))
+      setChecks((prev) =>
+        prev.map((c) =>
+          c.id === 'container'
+            ? { ...c, status: 'pass', message: 'Cloudflared running — reconfiguring homeserver...' }
+            : c
+        )
+      )
       try {
         const cfgRes = await fetch('/api/onboarding/local/networking/configure-tunnel', {
           method: 'POST',
@@ -132,48 +146,75 @@ export default function NetworkingStep({ ctx, dispatch, savedConfig }) {
         if (cfgRes.ok && cfgData.success) {
           setPublicUrl(cfgData.publicUrl)
           setChecks([
-            { id: 'tunnel', label: 'Check public endpoint', status: 'pass', message: 'Tunnel connected and homeserver reconfigured' },
+            {
+              id: 'tunnel',
+              label: 'Check public endpoint',
+              status: 'pass',
+              message: 'Tunnel connected and homeserver reconfigured'
+            },
             { id: 'container', label: 'Check cloudflared container', status: 'pass', message: 'Running' }
           ])
           setPhase('done')
           setProbing(false)
           return
         }
-      } catch {}
-      setChecks(prev => prev.map(c =>
-        c.id === 'container' ? {
-          ...c, status: 'fail',
-          message: 'Container running but tunnel not working',
-          help: 'The cloudflared container is running but the tunnel is not responding. You may need to provide a new token.'
-        } : c
-      ))
+      } catch {
+        /* ignore */
+      }
+      setChecks((prev) =>
+        prev.map((c) =>
+          c.id === 'container'
+            ? {
+                ...c,
+                status: 'fail',
+                message: 'Container running but tunnel not working',
+                help: 'The cloudflared container is running but the tunnel is not responding. You may need to provide a new token.'
+              }
+            : c
+        )
+      )
       setPhase('tunnel-input')
-    } else if (containerData.error && (
-      containerData.error.includes('Invalid tunnel token') ||
-      containerData.error.includes('not valid') ||
-      containerData.error.includes('Unauthorized')
-    )) {
-      setChecks(prev => prev.map(c =>
-        c.id === 'container' ? {
-          ...c, status: 'fail',
-          message: 'Invalid tunnel token',
-          help: 'The cloudflared container has a bad token and is crash-looping. Enter a valid token from your Cloudflare Zero Trust dashboard.'
-        } : c
-      ))
+    } else if (
+      containerData.error &&
+      (containerData.error.includes('Invalid tunnel token') ||
+        containerData.error.includes('not valid') ||
+        containerData.error.includes('Unauthorized'))
+    ) {
+      setChecks((prev) =>
+        prev.map((c) =>
+          c.id === 'container'
+            ? {
+                ...c,
+                status: 'fail',
+                message: 'Invalid tunnel token',
+                help: 'The cloudflared container has a bad token and is crash-looping. Enter a valid token from your Cloudflare Zero Trust dashboard.'
+              }
+            : c
+        )
+      )
       setPhase('tunnel-input')
     } else if (!containerData.running && containerData.status && containerData.status !== 'not_found') {
-      setChecks(prev => prev.map(c =>
-        c.id === 'container' ? {
-          ...c, status: 'fail',
-          message: `Cloudflared is ${containerData.status}`,
-          help: containerData.error || 'The cloudflared container is not running. Enter a valid token to reconfigure it.'
-        } : c
-      ))
+      setChecks((prev) =>
+        prev.map((c) =>
+          c.id === 'container'
+            ? {
+                ...c,
+                status: 'fail',
+                message: `Cloudflared is ${containerData.status}`,
+                help:
+                  containerData.error ||
+                  'The cloudflared container is not running. Enter a valid token to reconfigure it.'
+              }
+            : c
+        )
+      )
       setPhase('tunnel-input')
     } else {
-      setChecks(prev => prev.map(c =>
-        c.id === 'container' ? { ...c, status: 'fail', message: 'No cloudflared container found' } : c
-      ))
+      setChecks((prev) =>
+        prev.map((c) =>
+          c.id === 'container' ? { ...c, status: 'fail', message: 'No cloudflared container found' } : c
+        )
+      )
       setPhase('tunnel-input')
     }
     setProbing(false)
@@ -852,7 +893,11 @@ export default function NetworkingStep({ ctx, dispatch, savedConfig }) {
 
       <div className="flex items-center gap-3">
         <button
-          onClick={() => { setPhase('choose'); setChecks([]); setPublicUrl(null) }}
+          onClick={() => {
+            setPhase('choose')
+            setChecks([])
+            setPublicUrl(null)
+          }}
           className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
         >
           Back

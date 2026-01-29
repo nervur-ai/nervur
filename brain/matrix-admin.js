@@ -1,4 +1,8 @@
+import { readFileSync, writeFileSync, existsSync } from 'fs'
+import { join } from 'path'
 import { readConfig } from './config.js'
+import { deriveBrainPassword } from './homeserver.js'
+import { composeRestart } from '../homeserver/docker.js'
 
 function getAuth() {
   const config = readConfig()
@@ -10,6 +14,77 @@ function getAuth() {
 
 function headers(token) {
   return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+}
+
+// ── Registration mode helpers ──
+
+/**
+ * Probe the register endpoint to detect current registration mode.
+ * @returns {'closed' | 'token' | 'open'}
+ */
+export async function getRegistrationMode(hsUrl) {
+  const r = await fetch(`${hsUrl}/_matrix/client/v3/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  })
+  const data = await r.json()
+  if (data.errcode === 'M_FORBIDDEN') return 'closed'
+  if (r.status === 401 && data.flows) {
+    const stages = data.flows.flatMap((f) => f.stages || [])
+    const hasToken = stages.includes('m.login.registration_token')
+    const hasDummy = stages.includes('m.login.dummy')
+    return hasDummy && !hasToken ? 'open' : hasToken ? 'token' : 'open'
+  }
+  return 'open'
+}
+
+/**
+ * Edit tuwunel.toml to set registration mode and restart the homeserver.
+ * @param {'closed' | 'token' | 'open'} mode
+ * @param {string} hsDir - path to the homeserver data directory
+ */
+export async function setRegistrationMode(mode, hsDir) {
+  const tomlPath = join(hsDir, 'tuwunel.toml')
+  if (!existsSync(tomlPath)) throw new Error('tuwunel.toml not found')
+
+  let toml = readFileSync(tomlPath, 'utf8')
+
+  // Extract existing registration_token value (preserve it so token mode can be re-enabled)
+  const tokenMatch = toml.match(/^#?\s*registration_token\s*=\s*"([^"]+)"/m)
+  const existingToken = tokenMatch?.[1]
+
+  // Remove existing registration lines (we'll rewrite them)
+  toml = toml.replace(/^#?\s*allow_registration\s*=\s*.+\n?/gm, '')
+  toml = toml.replace(/^#?\s*registration_token\s*=\s*.+\n?/gm, '')
+  toml = toml.replace(
+    /^#?\s*yes_i_am_very_very_sure_i_want_an_open_registration_server_prone_to_abuse\s*=\s*.+\n?/gm,
+    ''
+  )
+
+  // Find insertion point — after database_path line
+  const insertAfter = /^database_path\s*=.+$/m
+  let regBlock = ''
+
+  if (mode === 'closed') {
+    regBlock = 'allow_registration = false'
+    if (existingToken) regBlock += `\n# registration_token = "${existingToken}"`
+  } else if (mode === 'token') {
+    regBlock = 'allow_registration = true'
+    if (existingToken) regBlock += `\nregistration_token = "${existingToken}"`
+  } else {
+    // open
+    regBlock = 'allow_registration = true'
+    regBlock += '\nyes_i_am_very_very_sure_i_want_an_open_registration_server_prone_to_abuse = true'
+    if (existingToken) regBlock += `\n# registration_token = "${existingToken}"`
+  }
+
+  toml = toml.replace(insertAfter, (match) => `${match}\n${regBlock}`)
+  writeFileSync(tomlPath, toml, 'utf8')
+
+  // Restart homeserver to pick up the new config
+  await composeRestart(hsDir)
+  await new Promise((r) => setTimeout(r, 2000))
 }
 
 // ── Admin Room Command Execution ──
@@ -39,7 +114,9 @@ async function findAdminRoom(hsUrl, token, serverName) {
           return storedId
         }
       }
-    } catch {}
+    } catch {
+      /* ignore */
+    }
   }
 
   const res = await fetch(`${hsUrl}/_matrix/client/v3/joined_rooms`, { headers: headers(token) })
@@ -48,12 +125,12 @@ async function findAdminRoom(hsUrl, token, serverName) {
 
   const conduitBot = `@conduit:${serverName}`
 
-  for (const roomId of (roomIds || [])) {
+  for (const roomId of roomIds || []) {
     try {
-      const membersRes = await fetch(
-        `${hsUrl}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/joined_members`,
-        { headers: headers(token), signal: AbortSignal.timeout(5000) }
-      )
+      const membersRes = await fetch(`${hsUrl}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/joined_members`, {
+        headers: headers(token),
+        signal: AbortSignal.timeout(5000)
+      })
       if (!membersRes.ok) continue
       const data = await membersRes.json()
       if (data.joined && conduitBot in data.joined) {
@@ -70,25 +147,31 @@ async function findAdminRoom(hsUrl, token, serverName) {
               return roomId
             }
           }
-        } catch {}
+        } catch {
+          /* ignore */
+        }
       }
-    } catch {}
+    } catch {
+      /* ignore */
+    }
   }
 
   // Fallback: just use first room with the conduit bot
-  for (const roomId of (roomIds || [])) {
+  for (const roomId of roomIds || []) {
     try {
-      const membersRes = await fetch(
-        `${hsUrl}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/joined_members`,
-        { headers: headers(token), signal: AbortSignal.timeout(5000) }
-      )
+      const membersRes = await fetch(`${hsUrl}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/joined_members`, {
+        headers: headers(token),
+        signal: AbortSignal.timeout(5000)
+      })
       if (!membersRes.ok) continue
       const data = await membersRes.json()
       if (data.joined && conduitBot in data.joined) {
         adminRoomId = roomId
         return roomId
       }
-    } catch {}
+    } catch {
+      /* ignore */
+    }
   }
 
   // Last resort: create a DM with @conduit — it responds to !admin commands in any room
@@ -154,7 +237,7 @@ export async function execAdminCommand(command) {
 
   // Poll for the bot's reply (max ~5 seconds)
   for (let attempt = 0; attempt < 10; attempt++) {
-    await new Promise(r => setTimeout(r, 500))
+    await new Promise((r) => setTimeout(r, 500))
 
     const msgRes = await fetch(
       `${hsUrl}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/messages?dir=b&limit=5`,
@@ -164,13 +247,15 @@ export async function execAdminCommand(command) {
     const msgData = await msgRes.json()
 
     // Find the bot's reply that came after our command
-    for (const event of (msgData.chunk || [])) {
-      if (event.sender === conduitBot &&
-          event.type === 'm.room.message' &&
-          event.event_id !== latestEventId &&
-          event.origin_server_ts > 0) {
+    for (const event of msgData.chunk || []) {
+      if (
+        event.sender === conduitBot &&
+        event.type === 'm.room.message' &&
+        event.event_id !== latestEventId &&
+        event.origin_server_ts > 0
+      ) {
         // Make sure this event is newer than our sent command
-        const sentEvent = msgData.chunk.find(e => e.event_id === sentEventId)
+        const sentEvent = msgData.chunk.find((e) => e.event_id === sentEventId)
         if (sentEvent && event.origin_server_ts >= sentEvent.origin_server_ts) {
           return event.content?.body || ''
         }
@@ -200,6 +285,75 @@ function parseCodeBlock(response) {
 
 // ── Users (server admin context) ──
 
+/**
+ * Scan all rooms for com.nervur.room state to classify brains and test users.
+ * Returns { brains: Map<userId, { roomId, name }>, testUsers: Map<userId, { roomId, brainUserId }> }
+ */
+async function classifyUsers() {
+  const { hsUrl, token } = getAuth()
+
+  // Get all rooms on the server via admin bot
+  const roomsResponse = await execAdminCommand('rooms list')
+  const roomLines = parseCodeBlock(roomsResponse)
+  const roomIds = roomLines.map((l) => l.split('\t')[0]?.trim()).filter((id) => id?.startsWith('!'))
+
+  const brains = new Map()
+  const testUsers = new Map()
+
+  // Check each room's m.room.create event for our custom type, then read
+  // com.nervur.room state for the brain_user_id. Both are readable without
+  // room membership thanks to world_readable history visibility.
+  await Promise.all(
+    roomIds.map(async (roomId) => {
+      try {
+        const res = await fetch(`${hsUrl}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.create/`, {
+          headers: headers(token),
+          signal: AbortSignal.timeout(3000)
+        })
+        if (!res.ok) return
+        const createEvent = await res.json()
+        const roomType = createEvent.type
+        if (roomType !== 'com.nervur.brain_admin' && roomType !== 'com.nervur.test_user') return
+
+        // Read brain_user_id from com.nervur.room state (creator field was removed in room v11)
+        const stateRes = await fetch(
+          `${hsUrl}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/com.nervur.room/`,
+          { headers: headers(token), signal: AbortSignal.timeout(3000) }
+        )
+        if (!stateRes.ok) return
+        const nervurRoom = await stateRes.json()
+        const brainUserId = nervurRoom.brain_user_id
+        if (!brainUserId) return
+
+        if (roomType === 'com.nervur.brain_admin') {
+          brains.set(brainUserId, { roomId })
+        } else if (roomType === 'com.nervur.test_user') {
+          try {
+            const membersRes = await fetch(
+              `${hsUrl}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/joined_members`,
+              { headers: headers(token), signal: AbortSignal.timeout(5000) }
+            )
+            if (membersRes.ok) {
+              const membersData = await membersRes.json()
+              for (const userId of Object.keys(membersData.joined || {})) {
+                if (userId !== brainUserId) {
+                  testUsers.set(userId, { roomId, brainUserId })
+                }
+              }
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    })
+  )
+
+  return { brains, testUsers }
+}
+
 export async function listUsers() {
   const { brainUserId, serverName } = getAuth()
   const conduitBot = `@conduit:${serverName}`
@@ -209,44 +363,153 @@ export async function listUsers() {
   const lines = parseCodeBlock(response)
 
   // Each line is a user ID like "@brain:stg.nervur.com"
-  const userIds = lines.filter(line => line.startsWith('@'))
+  const userIds = lines.filter((line) => line.startsWith('@'))
 
   // Filter out the conduit server bot
-  const filtered = userIds.filter(id => id !== conduitBot)
+  const filtered = userIds.filter((id) => id !== conduitBot)
+
+  // Classify users by scanning room state
+  const { brains, testUsers } = await classifyUsers()
 
   // Fetch display names for all users via profile API
   const { hsUrl, token } = getAuth()
-  const users = await Promise.all(filtered.map(async (userId) => {
-    let displayname = null
-    let avatar_url = null
-    try {
-      const res = await fetch(
-        `${hsUrl}/_matrix/client/v3/profile/${encodeURIComponent(userId)}`,
-        { headers: headers(token), signal: AbortSignal.timeout(3000) }
-      )
-      if (res.ok) {
-        const data = await res.json()
-        displayname = data.displayname || null
-        avatar_url = data.avatar_url || null
+  const users = await Promise.all(
+    filtered.map(async (userId) => {
+      let displayname = null
+      let avatar_url = null
+      try {
+        const res = await fetch(`${hsUrl}/_matrix/client/v3/profile/${encodeURIComponent(userId)}`, {
+          headers: headers(token),
+          signal: AbortSignal.timeout(3000)
+        })
+        if (res.ok) {
+          const data = await res.json()
+          displayname = data.displayname || null
+          avatar_url = data.avatar_url || null
+        }
+      } catch {
+        /* ignore */
       }
-    } catch {}
-    return {
-      name: userId,
-      displayname,
-      avatar_url,
-      admin: userId === brainUserId,
-      deactivated: false
-    }
-  }))
+
+      const brainInfo = brains.get(userId)
+      const testInfo = testUsers.get(userId)
+      const role = brainInfo ? 'brain' : testInfo ? 'test' : 'human'
+
+      return {
+        name: userId,
+        displayname,
+        avatar_url,
+        admin: userId === brainUserId,
+        deactivated: false,
+        role,
+        ...(brainInfo && { brainRoomId: brainInfo.roomId }),
+        ...(testInfo && { brainUserId: testInfo.brainUserId }),
+        ...(userId === brainUserId && { isSelf: true })
+      }
+    })
+  )
 
   return users
 }
 
-export async function createUser(username, password, displayName) {
-  const { hsUrl, serverName } = getAuth()
+export async function createUser(username, password, displayName, isTest = false) {
+  const { hsUrl, serverName, token: brainToken, brainUserId } = getAuth()
   const config = readConfig()
-  const registrationToken = config?.homeserver?.registrationSecret || config?.onboarding?.registrationSecret
+  const hsDir = join(process.env.DATA_DIR || join(process.cwd(), 'data'), 'homeserver')
+  let registrationToken =
+    config?.homeserver?.registrationSecret ||
+    config?.onboarding?.server?.registrationSecret ||
+    config?.onboarding?.registrationSecret
 
+  // Fallback: read token directly from tuwunel.toml
+  if (!registrationToken) {
+    const tomlPath = join(hsDir, 'tuwunel.toml')
+    if (existsSync(tomlPath)) {
+      const toml = readFileSync(tomlPath, 'utf8')
+      const match =
+        toml.match(/^registration_token\s*=\s*"([^"]+)"/m) || toml.match(/^#\s*registration_token\s*=\s*"([^"]+)"/m)
+      if (match) registrationToken = match[1]
+    }
+  }
+
+  // For test users, derive password from brain's registration key
+  if (isTest) {
+    const registrationKey = config?.brain?.registrationKey
+    if (!registrationKey) throw new Error('Brain registration key not found — cannot create test user')
+    password = deriveBrainPassword(registrationKey, username)
+  }
+
+  // Detect registration mode and handle accordingly
+  let mode = await getRegistrationMode(hsUrl)
+  let reopened = false
+
+  if (mode === 'closed') {
+    // Temporarily enable token-based registration
+    await setRegistrationMode('token', hsDir)
+    mode = 'token'
+    reopened = true
+  }
+
+  try {
+    const result = await doRegister(hsUrl, username, password, mode, registrationToken, serverName)
+    if (displayName) await setDisplayName(hsUrl, result.access_token, result.user_id, displayName)
+
+    // For test users, create a room with brain + test user so classifyUsers can link them
+    if (isTest) {
+      try {
+        const testUserId = result.user_id
+        const createRoomRes = await fetch(`${hsUrl}/_matrix/client/v3/createRoom`, {
+          method: 'POST',
+          headers: headers(brainToken),
+          body: JSON.stringify({
+            preset: 'private_chat',
+            name: `Test: ${displayName || username}`,
+            invite: [testUserId],
+            creation_content: { type: 'com.nervur.test_user' },
+            initial_state: [
+              {
+                type: 'm.room.history_visibility',
+                state_key: '',
+                content: { history_visibility: 'world_readable' }
+              },
+              {
+                type: 'com.nervur.room',
+                state_key: '',
+                content: {
+                  type: 'test_user',
+                  brain_user_id: brainUserId,
+                  test: true
+                }
+              }
+            ]
+          })
+        })
+        if (!createRoomRes.ok) {
+          const err = await createRoomRes.json().catch(() => ({}))
+          console.error('Test user room creation failed:', err.error || createRoomRes.status)
+        } else {
+          const roomData = await createRoomRes.json()
+          // Accept the invite as the test user so both are joined members
+          await fetch(`${hsUrl}/_matrix/client/v3/join/${encodeURIComponent(roomData.room_id)}`, {
+            method: 'POST',
+            headers: headers(result.access_token),
+            body: JSON.stringify({})
+          })
+        }
+      } catch (err) {
+        console.error('Test user room setup error:', err.message)
+      }
+    }
+
+    return result
+  } finally {
+    if (reopened) {
+      await setRegistrationMode('closed', hsDir)
+    }
+  }
+}
+
+async function doRegister(hsUrl, username, password, mode, registrationToken, serverName) {
   // Step 1: initiate registration to get session + flows
   const flowRes = await fetch(`${hsUrl}/_matrix/client/v3/register`, {
     method: 'POST',
@@ -255,10 +518,7 @@ export async function createUser(username, password, displayName) {
   })
 
   if (flowRes.ok) {
-    // Open registration worked directly
-    const result = await flowRes.json()
-    if (displayName) await setDisplayName(hsUrl, result.access_token, result.user_id, displayName)
-    return result
+    return flowRes.json()
   }
 
   const flowData = await flowRes.json()
@@ -271,16 +531,13 @@ export async function createUser(username, password, displayName) {
     throw new Error(flowData.error || `Registration failed (HTTP ${flowRes.status})`)
   }
 
-  // Step 2: complete registration with auth
-  const stages = (flowData.flows || []).flatMap(f => f.stages || [])
+  // Step 2: complete registration with appropriate auth type
   let auth
-
-  if (registrationToken && stages.includes('m.login.registration_token')) {
+  if (mode === 'token') {
+    if (!registrationToken) throw new Error('Registration token required but not configured')
     auth = { type: 'm.login.registration_token', token: registrationToken, session: flowData.session }
-  } else if (stages.includes('m.login.dummy')) {
-    auth = { type: 'm.login.dummy', session: flowData.session }
   } else {
-    throw new Error(`Unsupported registration stages: ${stages.join(', ')}`)
+    auth = { type: 'm.login.dummy', session: flowData.session }
   }
 
   const res = await fetch(`${hsUrl}/_matrix/client/v3/register`, {
@@ -294,9 +551,7 @@ export async function createUser(username, password, displayName) {
     throw new Error(err.error || `Registration failed (HTTP ${res.status})`)
   }
 
-  const result = await res.json()
-  if (displayName) await setDisplayName(hsUrl, result.access_token, result.user_id, displayName)
-  return result
+  return res.json()
 }
 
 async function setDisplayName(hsUrl, accessToken, userId, displayName) {
@@ -325,23 +580,41 @@ export async function deactivateUser(userId) {
 // ── Rooms (server admin context) ──
 
 export async function listRooms() {
+  const { hsUrl, token } = getAuth()
+
   // Use admin room command to get ALL rooms the server knows about
   const response = await execAdminCommand('rooms list')
   const lines = parseCodeBlock(response)
 
   // Each line: "!roomId:server\tMembers: N\tName: RoomName"
-  return lines.map(line => {
-    const parts = line.split('\t')
-    const room_id = parts[0]?.trim() || ''
-    const membersMatch = parts[1]?.match(/Members:\s*(\d+)/)
-    const nameMatch = parts[2]?.match(/Name:\s*(.+)/)
-    return {
-      room_id,
-      name: nameMatch?.[1]?.trim() || room_id,
-      num_joined_members: membersMatch ? parseInt(membersMatch[1], 10) : 0,
-      topic: ''
+  const allRooms = lines
+    .map((line) => {
+      const parts = line.split('\t')
+      const room_id = parts[0]?.trim() || ''
+      const membersMatch = parts[1]?.match(/Members:\s*(\d+)/)
+      const nameMatch = parts[2]?.match(/Name:\s*(.+)/)
+      return {
+        room_id,
+        name: nameMatch?.[1]?.trim() || room_id,
+        num_joined_members: membersMatch ? parseInt(membersMatch[1], 10) : 0,
+        topic: ''
+      }
+    })
+    .filter((r) => r.room_id.startsWith('!'))
+
+  // Only return rooms where the brain is NOT a member
+  const brainRoomIds = new Set()
+  try {
+    const joinedRes = await fetch(`${hsUrl}/_matrix/client/v3/joined_rooms`, { headers: headers(token) })
+    if (joinedRes.ok) {
+      const { joined_rooms } = await joinedRes.json()
+      for (const id of joined_rooms || []) brainRoomIds.add(id)
     }
-  }).filter(r => r.room_id.startsWith('!'))
+  } catch {
+    /* ignore */
+  }
+
+  return allRooms.filter((r) => !brainRoomIds.has(r.room_id))
 }
 
 export async function getRoomMembers(roomId) {
@@ -350,14 +623,16 @@ export async function getRoomMembers(roomId) {
   const lines = parseCodeBlock(response)
 
   // Each line: "@user:server | displayname"
-  return lines.map(line => {
-    const [userId, ...rest] = line.split(' | ')
-    const displayname = rest.join(' | ').trim() || userId?.trim()
-    return {
-      user_id: userId?.trim(),
-      displayname
-    }
-  }).filter(m => m.user_id?.startsWith('@'))
+  return lines
+    .map((line) => {
+      const [userId, ...rest] = line.split(' | ')
+      const displayname = rest.join(' | ').trim() || userId?.trim()
+      return {
+        user_id: userId?.trim(),
+        displayname
+      }
+    })
+    .filter((m) => m.user_id?.startsWith('@'))
 }
 
 export async function createRoom(name, topic) {
@@ -406,34 +681,32 @@ async function fetchDisplayName(hsUrl, token, userId) {
 async function parseInviteRooms(invited, hsUrl, token) {
   const results = Object.entries(invited).map(([roomId, roomData]) => {
     const events = roomData.invite_state?.events || []
-    const nameEvent = events.find(e => e.type === 'm.room.name')
+    const nameEvent = events.find((e) => e.type === 'm.room.name')
     const roomName = nameEvent?.content?.name || null
-    const memberEvent = events.find(
-      e => e.type === 'm.room.member' && e.content?.membership === 'invite'
-    )
+    const memberEvent = events.find((e) => e.type === 'm.room.member' && e.content?.membership === 'invite')
     const inviter = memberEvent?.sender || null
-    const inviterMemberEvent = events.find(
-      e => e.type === 'm.room.member' && e.state_key === inviter
-    )
+    const inviterMemberEvent = events.find((e) => e.type === 'm.room.member' && e.state_key === inviter)
     const inviterDisplayName = inviterMemberEvent?.content?.displayname || null
-    const topicEvent = events.find(e => e.type === 'm.room.topic')
+    const topicEvent = events.find((e) => e.type === 'm.room.topic')
     const topic = topicEvent?.content?.topic || null
-    const createEvent = events.find(e => e.type === 'm.room.create')
+    const createEvent = events.find((e) => e.type === 'm.room.create')
     const creator = createEvent?.content?.creator || createEvent?.sender || null
-    const joinRulesEvent = events.find(e => e.type === 'm.room.join_rules')
+    const joinRulesEvent = events.find((e) => e.type === 'm.room.join_rules')
     const joinRule = joinRulesEvent?.content?.join_rule || null
-    const aliasEvent = events.find(e => e.type === 'm.room.canonical_alias')
+    const aliasEvent = events.find((e) => e.type === 'm.room.canonical_alias')
     const roomAlias = aliasEvent?.content?.alias || null
     const isDirect = memberEvent?.content?.is_direct || false
     const reason = memberEvent?.content?.reason || null
     return { roomId, roomName, inviter, inviterDisplayName, topic, creator, joinRule, roomAlias, isDirect, reason }
   })
 
-  await Promise.all(results.map(async (inv) => {
-    if (inv.inviter && !inv.inviterDisplayName) {
-      inv.inviterDisplayName = await fetchDisplayName(hsUrl, token, inv.inviter)
-    }
-  }))
+  await Promise.all(
+    results.map(async (inv) => {
+      if (inv.inviter && !inv.inviterDisplayName) {
+        inv.inviterDisplayName = await fetchDisplayName(hsUrl, token, inv.inviter)
+      }
+    })
+  )
 
   return results
 }
@@ -450,10 +723,10 @@ const SYNC_FILTER = JSON.stringify({
 
 export async function getPendingInvites() {
   const { hsUrl, token } = getAuth()
-  const res = await fetch(
-    `${hsUrl}/_matrix/client/v3/sync?filter=${encodeURIComponent(SYNC_FILTER)}&timeout=0`,
-    { headers: headers(token), signal: AbortSignal.timeout(15_000) }
-  )
+  const res = await fetch(`${hsUrl}/_matrix/client/v3/sync?filter=${encodeURIComponent(SYNC_FILTER)}&timeout=0`, {
+    headers: headers(token),
+    signal: AbortSignal.timeout(15_000)
+  })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
     throw new Error(err.error || `HTTP ${res.status}`)
@@ -503,7 +776,7 @@ async function runSyncLoop() {
         signal: AbortSignal.timeout(60_000)
       })
       if (!res.ok) {
-        await new Promise(r => setTimeout(r, 5000))
+        await new Promise((r) => setTimeout(r, 5000))
         continue
       }
       const data = await res.json()
@@ -514,16 +787,15 @@ async function runSyncLoop() {
       const left = data.rooms?.leave || {}
       const joined = data.rooms?.join || {}
 
-      const hasInviteChanges = Object.keys(invited).length > 0
-        || Object.keys(left).length > 0
-        || Object.keys(joined).length > 0
+      const hasInviteChanges =
+        Object.keys(invited).length > 0 || Object.keys(left).length > 0 || Object.keys(joined).length > 0
 
       if (hasInviteChanges && sseClients.size > 0) {
         const fullInvites = await getPendingInvites()
         broadcast('invitations', { invitations: fullInvites })
       }
     } catch {
-      await new Promise(r => setTimeout(r, 5000))
+      await new Promise((r) => setTimeout(r, 5000))
     }
   }
 }

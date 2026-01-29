@@ -1,14 +1,19 @@
 import { Router } from 'express'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
-import { dirname, join } from 'path'
-import { fileURLToPath } from 'url'
+import { join } from 'path'
 import { readConfig, updateConfig } from '../brain/config.js'
 import { runPreflight, configure, pull, start, verify, getStatus } from './provision.js'
 import { checkPort } from './validation.js'
 import { generateDockerCompose } from './templates.js'
-import { composeUp, composeRestart, waitForHealthy, getContainerStatus, getContainerLogs, resolveHostPath } from './docker.js'
+import {
+  composeUp,
+  composeRestart,
+  waitForHealthy,
+  getContainerStatus,
+  getContainerLogs,
+  resolveHostPath
+} from './docker.js'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), 'data')
 const HS_DIR = join(DATA_DIR, 'homeserver')
 
@@ -181,15 +186,15 @@ router.post('/networking/configure-tunnel', async (req, res) => {
     const isDocker = existsSync('/.dockerenv')
 
     // Read serverName from existing tuwunel.toml (source of truth)
-    let serverName
+    let _serverName
     try {
       const toml = readFileSync(join(HS_DIR, 'tuwunel.toml'), 'utf8')
       const snMatch = toml.match(/server_name\s*=\s*"([^"]+)"/)
-      serverName = snMatch?.[1]
+      _serverName = snMatch?.[1]
     } catch (_e) {
       // fall back to config
     }
-    serverName = serverName || server.serverName || 'nervur.local'
+    _serverName = _serverName || server.serverName || 'nervur.local'
 
     // If tunnelToken provided, rewrite docker-compose with cloudflared service
     if (tunnelToken) {

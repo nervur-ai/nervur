@@ -29,7 +29,7 @@ export function getStepTitles(path) {
   const titles = { server: 'Server', brain: 'Brain', network: 'Network', ready: 'Ready' }
   const steps = getVisibleSteps(path)
   if (!steps) return null
-  return steps.map(id => ({ id, title: titles[id] }))
+  return steps.map((id) => ({ id, title: titles[id] }))
 }
 
 // Guards: can this step be entered given current context?

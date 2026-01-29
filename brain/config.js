@@ -9,11 +9,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 // Tests use per-process temp files inside the source tree
 const DATA_DIR = process.env.NERVUR_TEST
   ? __dirname // tests write next to source, cleaned up after
-  : (process.env.DATA_DIR || join(process.cwd(), 'data'))
+  : process.env.DATA_DIR || join(process.cwd(), 'data')
 
 // Ensure data dir exists (no-op if already there)
 if (!process.env.NERVUR_TEST) {
-  try { mkdirSync(DATA_DIR, { recursive: true }) } catch {}
+  try {
+    mkdirSync(DATA_DIR, { recursive: true })
+  } catch {
+    /* ignore */
+  }
 }
 
 const CONFIG_PATH = process.env.NERVUR_TEST
@@ -28,8 +32,14 @@ export function getConfigPath() {
 
 function deepMerge(target, source) {
   for (const key of Object.keys(source)) {
-    if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])
-        && target[key] && typeof target[key] === 'object' && !Array.isArray(target[key])) {
+    if (
+      source[key] &&
+      typeof source[key] === 'object' &&
+      !Array.isArray(source[key]) &&
+      target[key] &&
+      typeof target[key] === 'object' &&
+      !Array.isArray(target[key])
+    ) {
       deepMerge(target[key], source[key])
     } else {
       target[key] = source[key]
@@ -46,10 +56,22 @@ function migrateConfig(config) {
   if (ob && !ob.server) {
     // v1 → v2: move flat keys into nested structure
     const server = {}
-    if (ob.serverName) { server.serverName = ob.serverName; delete ob.serverName }
-    if (ob.port) { server.port = ob.port; delete ob.port }
-    if (ob.registrationSecret) { server.registrationSecret = ob.registrationSecret; delete ob.registrationSecret }
-    if (ob.input) { server.input = ob.input; delete ob.input }
+    if (ob.serverName) {
+      server.serverName = ob.serverName
+      delete ob.serverName
+    }
+    if (ob.port) {
+      server.port = ob.port
+      delete ob.port
+    }
+    if (ob.registrationSecret) {
+      server.registrationSecret = ob.registrationSecret
+      delete ob.registrationSecret
+    }
+    if (ob.input) {
+      server.input = ob.input
+      delete ob.input
+    }
     if (ob.homeserver) {
       if (ob.homeserver.url) server.url = ob.homeserver.url
       if (ob.homeserver.serverName) server.serverName = ob.homeserver.serverName

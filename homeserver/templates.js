@@ -93,4 +93,3 @@ registration_token = "${registrationSecret}"
 
 ${wellKnown}`
 }
-

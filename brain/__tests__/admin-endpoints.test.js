@@ -8,6 +8,7 @@ vi.mock('../homeserver.js', () => ({
   verifyHomeserver: vi.fn(),
   generateRegistrationKey: vi.fn(),
   registerBrain: vi.fn(),
+  deriveBrainPassword: vi.fn(),
   runPreflightChecks: vi.fn(),
   findExistingBrainAdminRoom: vi.fn(),
   createBrainAdminRoom: vi.fn(),
@@ -36,12 +37,27 @@ vi.mock('../matrix-admin.js', () => ({
   acceptInvite: vi.fn(),
   rejectInvite: vi.fn(),
   addSSEClient: vi.fn(),
-  startSyncLoop: vi.fn()
+  startSyncLoop: vi.fn(),
+  getRegistrationMode: vi.fn(),
+  setRegistrationMode: vi.fn()
 }))
 
-const { verifyHomeserver, registerBrain, findExistingBrainAdminRoom, createBrainAdminRoom } = await import('../homeserver.js')
+const { verifyHomeserver, registerBrain, findExistingBrainAdminRoom, createBrainAdminRoom } =
+  await import('../homeserver.js')
 const { getContainerStatus, composeUp, composeDown, composeRestart } = await import('../../homeserver/docker.js')
-const { listUsers, createUser, deactivateUser, listRooms, getRoomMembers, createRoom, inviteToRoom, getPendingInvites, acceptInvite, rejectInvite } = await import('../matrix-admin.js')
+const {
+  listUsers,
+  createUser,
+  deactivateUser,
+  listRooms,
+  getRoomMembers,
+  createRoom,
+  inviteToRoom,
+  getPendingInvites,
+  acceptInvite,
+  rejectInvite,
+  getRegistrationMode
+} = await import('../matrix-admin.js')
 const { default: app } = await import('../app.js')
 
 function writeLocalConfig() {
@@ -236,11 +252,13 @@ describe('POST /api/homeserver/users', () => {
     createUser.mockResolvedValue({ user_id: '@alice:nervur.local' })
 
     const res = await request(app).post('/api/homeserver/users').send({
-      username: 'alice', password: 'secret123', displayName: 'Alice'
+      username: 'alice',
+      password: 'secret123',
+      displayName: 'Alice'
     })
     expect(res.status).toBe(200)
     expect(res.body.success).toBe(true)
-    expect(createUser).toHaveBeenCalledWith('alice', 'secret123', 'Alice')
+    expect(createUser).toHaveBeenCalledWith('alice', 'secret123', 'Alice', false)
   })
 
   it('returns 400 without username', async () => {
@@ -257,7 +275,8 @@ describe('POST /api/homeserver/users', () => {
     createUser.mockRejectedValue(new Error('User exists'))
 
     const res = await request(app).post('/api/homeserver/users').send({
-      username: 'alice', password: 'secret'
+      username: 'alice',
+      password: 'secret'
     })
     expect(res.status).toBe(500)
     expect(res.body.error).toBe('User exists')
@@ -289,9 +308,7 @@ describe('DELETE /api/homeserver/users/:userId', () => {
 describe('GET /api/homeserver/rooms', () => {
   it('returns rooms list', async () => {
     writeLocalConfig()
-    listRooms.mockResolvedValue([
-      { room_id: '!abc:nervur.local', name: 'General', num_joined_members: 3 }
-    ])
+    listRooms.mockResolvedValue([{ room_id: '!abc:nervur.local', name: 'General', num_joined_members: 3 }])
 
     const res = await request(app).get('/api/homeserver/rooms')
     expect(res.status).toBe(200)
@@ -327,9 +344,7 @@ describe('POST /api/homeserver/rooms', () => {
 describe('GET /api/homeserver/rooms/:id/members', () => {
   it('returns room members', async () => {
     writeLocalConfig()
-    getRoomMembers.mockResolvedValue([
-      { user_id: '@alice:nervur.local', displayname: 'Alice' }
-    ])
+    getRoomMembers.mockResolvedValue([{ user_id: '@alice:nervur.local', displayname: 'Alice' }])
 
     const res = await request(app).get('/api/homeserver/rooms/%21abc%3Anervur.local/members')
     expect(res.status).toBe(200)
@@ -352,9 +367,7 @@ describe('POST /api/homeserver/rooms/:id/invite', () => {
   })
 
   it('returns 400 without userId', async () => {
-    const res = await request(app)
-      .post('/api/homeserver/rooms/%21abc%3Anervur.local/invite')
-      .send({})
+    const res = await request(app).post('/api/homeserver/rooms/%21abc%3Anervur.local/invite').send({})
     expect(res.status).toBe(400)
   })
 })
@@ -362,37 +375,25 @@ describe('POST /api/homeserver/rooms/:id/invite', () => {
 // ── Registration config ──
 
 describe('GET /api/homeserver/registration-config', () => {
-  it('returns registration enabled with stages', async () => {
+  it('returns registration mode token', async () => {
     writeLocalConfig()
-    global.fetch = vi.fn().mockResolvedValue({
-      status: 401,
-      ok: false,
-      json: async () => ({
-        flows: [{ stages: ['m.login.registration_token'] }],
-        session: 'test'
-      })
-    })
+    getRegistrationMode.mockResolvedValue('token')
 
     const res = await request(app).get('/api/homeserver/registration-config')
     expect(res.status).toBe(200)
-    expect(res.body.registrationEnabled).toBe(true)
-    expect(res.body.stages).toContain('m.login.registration_token')
+    expect(res.body.mode).toBe('token')
   })
 
-  it('returns registration disabled when M_FORBIDDEN', async () => {
+  it('returns registration mode closed', async () => {
     writeLocalConfig()
-    global.fetch = vi.fn().mockResolvedValue({
-      status: 403,
-      ok: false,
-      json: async () => ({ errcode: 'M_FORBIDDEN', error: 'Registration disabled' })
-    })
+    getRegistrationMode.mockResolvedValue('closed')
 
     const res = await request(app).get('/api/homeserver/registration-config')
-    expect(res.body.registrationEnabled).toBe(false)
+    expect(res.status).toBe(200)
+    expect(res.body.mode).toBe('closed')
   })
 
-  it('rejects for remote homeserver', async () => {
-    writeRemoteConfig()
+  it('returns 400 when no homeserver configured', async () => {
     const res = await request(app).get('/api/homeserver/registration-config')
     expect(res.status).toBe(400)
   })
@@ -403,9 +404,7 @@ describe('GET /api/homeserver/registration-config', () => {
 describe('GET /api/brain/invitations', () => {
   it('returns pending invitations', async () => {
     writeLocalConfig()
-    getPendingInvites.mockResolvedValue([
-      { roomId: '!room:test', roomName: 'Test Room', inviter: '@alice:test' }
-    ])
+    getPendingInvites.mockResolvedValue([{ roomId: '!room:test', roomName: 'Test Room', inviter: '@alice:test' }])
 
     const res = await request(app).get('/api/brain/invitations')
     expect(res.status).toBe(200)

@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Onboarding from './pages/Onboarding.jsx'
 import Dashboard from './pages/Dashboard.jsx'
-import Users from './pages/Users.jsx'
+import Brains from './pages/Brains.jsx'
+import TestUsers from './pages/TestUsers.jsx'
+import HumanUsers from './pages/HumanUsers.jsx'
 import Rooms from './pages/Rooms.jsx'
 import HSSettings from './pages/HSSettings.jsx'
 import Settings from './pages/Settings.jsx'
@@ -43,8 +45,10 @@ export default function App() {
           <Route path="/invitations" element={<Invitations />} />
           {isLocal ? (
             <>
-              <Route path="/homeserver" element={<Navigate to="/homeserver/users" replace />} />
-              <Route path="/homeserver/users" element={<Users config={config} />} />
+              <Route path="/test-users" element={<TestUsers config={config} />} />
+              <Route path="/homeserver" element={<Navigate to="/homeserver/settings" replace />} />
+              <Route path="/homeserver/brains" element={<Brains config={config} />} />
+              <Route path="/homeserver/users" element={<HumanUsers config={config} />} />
               <Route path="/homeserver/rooms" element={<Rooms config={config} />} />
               <Route path="/homeserver/settings" element={<HSSettings config={config} />} />
             </>

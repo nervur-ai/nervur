@@ -435,7 +435,13 @@ export async function createBrainAdminRoom(url, accessToken, { brainUserId, name
     body: JSON.stringify({
       preset: 'private_chat',
       name: `${name} Admin`,
+      creation_content: { type: 'com.nervur.brain_admin' },
       initial_state: [
+        {
+          type: 'm.room.history_visibility',
+          state_key: '',
+          content: { history_visibility: 'world_readable' }
+        },
         {
           type: 'com.nervur.room',
           state_key: '',

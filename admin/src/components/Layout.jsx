@@ -4,7 +4,12 @@ import { NavLink, useLocation } from 'react-router-dom'
 function HomeIcon() {
   return (
     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+      />
     </svg>
   )
 }
@@ -12,7 +17,12 @@ function HomeIcon() {
 function InboxIcon() {
   return (
     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+      />
     </svg>
   )
 }
@@ -20,7 +30,12 @@ function InboxIcon() {
 function ServerIcon() {
   return (
     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"
+      />
     </svg>
   )
 }
@@ -28,7 +43,12 @@ function ServerIcon() {
 function CogIcon() {
   return (
     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+      />
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
     </svg>
   )
@@ -36,16 +56,35 @@ function CogIcon() {
 
 function ChevronIcon({ open }) {
   return (
-    <svg className={`w-4 h-4 transition-transform ${open ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className={`w-4 h-4 transition-transform ${open ? 'rotate-90' : ''}`}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+    </svg>
+  )
+}
+
+function TestUsersIcon() {
+  return (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+      />
     </svg>
   )
 }
 
 const hsSubLinks = [
   { name: 'Settings', href: '/homeserver/settings' },
-  { name: 'Users', href: '/homeserver/users' },
-  { name: 'Rooms', href: '/homeserver/rooms' },
+  { name: 'Remote Brains', href: '/homeserver/brains' },
+  { name: 'Human Users', href: '/homeserver/users' },
+  { name: 'Rooms', href: '/homeserver/rooms' }
 ]
 
 function compareVersions(a, b) {
@@ -68,7 +107,10 @@ export default function Layout({ children, config }) {
   const [updating, setUpdating] = useState(false)
 
   useEffect(() => {
-    fetch('/api/version').then(r => r.json()).then(setVersion).catch(() => {})
+    fetch('/api/version')
+      .then((r) => r.json())
+      .then(setVersion)
+      .catch(() => {})
   }, [])
 
   const hasUpdate = version?.latest && compareVersions(version.current, version.latest) < 0
@@ -78,7 +120,9 @@ export default function Layout({ children, config }) {
     setUpdating(true)
     try {
       await fetch('/api/update', { method: 'POST' })
-    } catch {}
+    } catch {
+      /* ignore */
+    }
     // Container will restart — poll until it's back
     const poll = setInterval(async () => {
       try {
@@ -87,7 +131,9 @@ export default function Layout({ children, config }) {
           clearInterval(poll)
           window.location.reload()
         }
-      } catch {}
+      } catch {
+        /* ignore */
+      }
     }, 3000)
   }
 
@@ -110,9 +156,7 @@ export default function Layout({ children, config }) {
             end
             className={({ isActive }) =>
               `flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors ${
-                isActive
-                  ? 'bg-nervur-700 text-white'
-                  : 'text-nervur-300 hover:bg-nervur-800 hover:text-white'
+                isActive ? 'bg-nervur-700 text-white' : 'text-nervur-300 hover:bg-nervur-800 hover:text-white'
               }`
             }
           >
@@ -125,15 +169,28 @@ export default function Layout({ children, config }) {
             to="/invitations"
             className={({ isActive }) =>
               `flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors ${
-                isActive
-                  ? 'bg-nervur-700 text-white'
-                  : 'text-nervur-300 hover:bg-nervur-800 hover:text-white'
+                isActive ? 'bg-nervur-700 text-white' : 'text-nervur-300 hover:bg-nervur-800 hover:text-white'
               }`
             }
           >
             <InboxIcon />
             Invitations
           </NavLink>
+
+          {/* Test Users */}
+          {isLocal && (
+            <NavLink
+              to="/test-users"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors ${
+                  isActive ? 'bg-nervur-700 text-white' : 'text-nervur-300 hover:bg-nervur-800 hover:text-white'
+                }`
+              }
+            >
+              <TestUsersIcon />
+              Test Users
+            </NavLink>
+          )}
 
           {/* Homeserver — expandable sub-nav for local only, hidden for remote */}
           {isLocal && (
@@ -142,9 +199,7 @@ export default function Layout({ children, config }) {
                 to="/homeserver/settings"
                 className={() =>
                   `flex items-center justify-between gap-3 px-4 py-3 rounded-lg transition-colors ${
-                    hsActive
-                      ? 'bg-nervur-700 text-white'
-                      : 'text-nervur-300 hover:bg-nervur-800 hover:text-white'
+                    hsActive ? 'bg-nervur-700 text-white' : 'text-nervur-300 hover:bg-nervur-800 hover:text-white'
                   }`
                 }
               >
@@ -156,16 +211,14 @@ export default function Layout({ children, config }) {
               </NavLink>
               {hsActive && (
                 <div className="ml-8 mt-0.5 space-y-0.5">
-                  {hsSubLinks.map(item => (
+                  {hsSubLinks.map((item) => (
                     <NavLink
                       key={item.href}
                       to={item.href}
                       end
                       className={({ isActive }) =>
                         `block px-3 py-1.5 rounded-md text-sm transition-colors ${
-                          isActive
-                            ? 'text-white bg-nervur-600'
-                            : 'text-nervur-400 hover:text-white hover:bg-nervur-800'
+                          isActive ? 'text-white bg-nervur-600' : 'text-nervur-400 hover:text-white hover:bg-nervur-800'
                         }`
                       }
                     >
@@ -182,9 +235,7 @@ export default function Layout({ children, config }) {
             to="/settings"
             className={({ isActive }) =>
               `flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors ${
-                isActive
-                  ? 'bg-nervur-700 text-white'
-                  : 'text-nervur-300 hover:bg-nervur-800 hover:text-white'
+                isActive ? 'bg-nervur-700 text-white' : 'text-nervur-300 hover:bg-nervur-800 hover:text-white'
               }`
             }
           >
@@ -193,9 +244,7 @@ export default function Layout({ children, config }) {
           </NavLink>
         </nav>
         <div className="p-4 border-t border-nervur-800">
-          <p className="text-nervur-500 text-xs">
-            {version ? `v${version.current}` : '...'}
-          </p>
+          <p className="text-nervur-500 text-xs">{version ? `v${version.current}` : '...'}</p>
           {hasUpdate && !updating && (
             <button
               onClick={triggerUpdate}
@@ -204,16 +253,12 @@ export default function Layout({ children, config }) {
               Update to v{version.latest}
             </button>
           )}
-          {updating && (
-            <p className="text-amber-400 text-xs mt-2 animate-pulse">Updating...</p>
-          )}
+          {updating && <p className="text-amber-400 text-xs mt-2 animate-pulse">Updating...</p>}
         </div>
       </aside>
 
       <main className="flex-1 overflow-auto">
-        <div className="p-8">
-          {children}
-        </div>
+        <div className="p-8">{children}</div>
       </main>
     </div>
   )

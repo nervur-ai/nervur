@@ -62,7 +62,16 @@ describe('config', () => {
 
   it('migrates v1 flat onboarding keys to nested server', () => {
     // Write a v1-style config (no _version, flat onboarding keys)
-    writeConfig({ _version: 1, onboarding: { step: 'server', serverName: 'example.com', port: 6167, registrationSecret: 'secret', homeserver: { url: 'http://localhost:6167', serverName: 'example.com' } } })
+    writeConfig({
+      _version: 1,
+      onboarding: {
+        step: 'server',
+        serverName: 'example.com',
+        port: 6167,
+        registrationSecret: 'secret',
+        homeserver: { url: 'http://localhost:6167', serverName: 'example.com' }
+      }
+    })
     const config = readConfig()
     expect(config._version).toBe(2)
     expect(config.onboarding.server.serverName).toBe('example.com')

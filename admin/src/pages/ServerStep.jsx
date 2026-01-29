@@ -134,7 +134,10 @@ export default function ServerStep({ ctx, dispatch, savedConfig, onReset, onFact
             setHsValidation({ status: 'error', message: data.error })
           } else {
             setVerified(data)
-            setHsValidation({ status: 'success', message: `Homeserver is reachable (${data.versions.length} API versions)` })
+            setHsValidation({
+              status: 'success',
+              message: `Homeserver is reachable (${data.versions.length} API versions)`
+            })
           }
         })
         .catch((err) => setHsValidation({ status: 'error', message: err.message }))
@@ -201,7 +204,7 @@ export default function ServerStep({ ctx, dispatch, savedConfig, onReset, onFact
           setPortStatus('available')
         } else {
           // Port is busy — but if it's our own Tuwunel container, that's fine (will be replaced)
-          const ownPort = (preflightData?.tuwunelContainers || []).some(c => c.port === portNum)
+          const ownPort = (preflightData?.tuwunelContainers || []).some((c) => c.port === portNum)
           setPortStatus(ownPort ? 'available' : 'busy')
         }
       } catch {
@@ -448,15 +451,22 @@ export default function ServerStep({ ctx, dispatch, savedConfig, onReset, onFact
                   onClick={handleFactoryReset}
                   disabled={resetting}
                   className={`text-xs transition-colors ${
-                    resetConfirm
-                      ? 'text-red-600 font-medium hover:text-red-700'
-                      : 'text-gray-400 hover:text-red-500'
+                    resetConfirm ? 'text-red-600 font-medium hover:text-red-700' : 'text-gray-400 hover:text-red-500'
                   }`}
                 >
-                  {resetting ? 'Wiping...' : resetConfirm ? 'Click again to wipe all homeserver data and start fresh' : 'Start fresh (wipe everything)'}
+                  {resetting
+                    ? 'Wiping...'
+                    : resetConfirm
+                      ? 'Click again to wipe all homeserver data and start fresh'
+                      : 'Start fresh (wipe everything)'}
                 </button>
                 {resetConfirm && !resetting && (
-                  <button onClick={() => setResetConfirm(false)} className="ml-2 text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+                  <button
+                    onClick={() => setResetConfirm(false)}
+                    className="ml-2 text-xs text-gray-400 hover:text-gray-600"
+                  >
+                    Cancel
+                  </button>
                 )}
               </div>
             </div>
@@ -527,7 +537,12 @@ export default function ServerStep({ ctx, dispatch, savedConfig, onReset, onFact
                 {resetting ? 'Wiping...' : resetConfirm ? 'Click again to confirm' : 'Wipe everything and start fresh'}
               </button>
               {resetConfirm && !resetting && (
-                <button onClick={() => setResetConfirm(false)} className="ml-2 text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+                <button
+                  onClick={() => setResetConfirm(false)}
+                  className="ml-2 text-xs text-gray-400 hover:text-gray-600"
+                >
+                  Cancel
+                </button>
               )}
             </div>
           )}
@@ -537,7 +552,8 @@ export default function ServerStep({ ctx, dispatch, savedConfig, onReset, onFact
               <p className="text-green-800 text-sm font-medium">Homeserver provisioned successfully.</p>
               {provisionedResult?.serverName && (
                 <p className="text-green-700 text-sm mt-1">
-                  Server name: <code className="bg-green-100 px-1 rounded font-medium">{provisionedResult.serverName}</code>
+                  Server name:{' '}
+                  <code className="bg-green-100 px-1 rounded font-medium">{provisionedResult.serverName}</code>
                   <span className="text-green-600 ml-1">— to change this, go back and re-provision.</span>
                 </p>
               )}

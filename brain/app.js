@@ -1,13 +1,36 @@
 import express from 'express'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
-import { rmSync, readFileSync, writeFileSync, existsSync } from 'fs'
+import { rmSync, readFileSync, existsSync } from 'fs'
 import { execSync, spawn } from 'child_process'
-import { readConfig, writeConfig, updateConfig, deleteConfig, deleteConfigKey, isInitialized } from './config.js'
-import { verifyHomeserver, generateRegistrationKey, registerBrain, deriveBrainPassword, runPreflightChecks, findExistingBrainAdminRoom, createBrainAdminRoom, joinTuwunelAdminRoom } from './homeserver.js'
+import { readConfig, writeConfig, updateConfig, deleteConfig, isInitialized } from './config.js'
+import {
+  verifyHomeserver,
+  generateRegistrationKey,
+  registerBrain,
+  runPreflightChecks,
+  findExistingBrainAdminRoom,
+  createBrainAdminRoom,
+  joinTuwunelAdminRoom
+} from './homeserver.js'
 import { localRoutes } from '../homeserver/index.js'
 import { getContainerStatus, composeUp, composeDown, composeRestart } from '../homeserver/docker.js'
-import { listUsers, createUser, deactivateUser, listRooms, getRoomMembers, createRoom, inviteToRoom, getPendingInvites, acceptInvite, rejectInvite, addSSEClient, startSyncLoop } from './matrix-admin.js'
+import {
+  listUsers,
+  createUser,
+  deactivateUser,
+  listRooms,
+  getRoomMembers,
+  createRoom,
+  inviteToRoom,
+  getPendingInvites,
+  acceptInvite,
+  rejectInvite,
+  addSSEClient,
+  startSyncLoop,
+  getRegistrationMode,
+  setRegistrationMode
+} from './matrix-admin.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), 'data')
@@ -31,7 +54,9 @@ app.get('/api/version', async (_req, res) => {
 
     let latest = null
     try {
-      const r = await fetch('https://raw.githubusercontent.com/nervur-ai/nervur/master/package.json', { signal: AbortSignal.timeout(5000) })
+      const r = await fetch('https://raw.githubusercontent.com/nervur-ai/nervur/master/package.json', {
+        signal: AbortSignal.timeout(5000)
+      })
       if (r.ok) {
         const remote = await r.json()
         latest = remote.version
@@ -57,7 +82,10 @@ app.post('/api/update', (_req, res) => {
     res.json({ success: true, message: 'Image pulled, restarting...' })
     // Detach the restart so the response gets sent first
     setTimeout(() => {
-      spawn('docker', ['compose', '-f', '/opt/nervur/docker-compose.yml', 'up', '-d', 'brain'], { detached: true, stdio: 'ignore' }).unref()
+      spawn('docker', ['compose', '-f', '/opt/nervur/docker-compose.yml', 'up', '-d', 'brain'], {
+        detached: true,
+        stdio: 'ignore'
+      }).unref()
     }, 500)
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -182,7 +210,12 @@ app.post('/api/onboarding/init-brain', async (req, res) => {
 
     // Save brain + homeserver config (preserves onboarding state for local path's networking step)
     const final = {
-      homeserver: { url, serverName: sn, type: type || 'remote', ...(tuwunelAdminRoomId && { tuwunel_admin_room_id: tuwunelAdminRoomId }) },
+      homeserver: {
+        url,
+        serverName: sn,
+        type: type || 'remote',
+        ...(tuwunelAdminRoomId && { tuwunel_admin_room_id: tuwunelAdminRoomId })
+      },
       brain: {
         name: name.trim(),
         username: username.trim(),
@@ -287,10 +320,11 @@ app.get('/api/homeserver/users', async (_req, res) => {
 app.post('/api/homeserver/users', async (req, res) => {
   const config = readConfig()
   if (config?.homeserver?.type !== 'local') return res.status(400).json({ error: 'Not a local homeserver' })
-  const { username, password, displayName } = req.body
-  if (!username || !password) return res.status(400).json({ error: 'username and password are required' })
+  const { username, password, displayName, isTest } = req.body
+  if (!username) return res.status(400).json({ error: 'username is required' })
+  if (!isTest && !password) return res.status(400).json({ error: 'password is required for non-test users' })
   try {
-    const result = await createUser(username, password, displayName)
+    const result = await createUser(username, password, displayName, !!isTest)
     res.json({ success: true, ...result })
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -362,26 +396,10 @@ app.post('/api/homeserver/rooms/:id/invite', async (req, res) => {
 
 app.get('/api/homeserver/registration-config', async (_req, res) => {
   const config = readConfig()
-  if (config?.homeserver?.type !== 'local') return res.status(400).json({ error: 'Not a local homeserver' })
-  const hsUrl = config.homeserver.url
+  if (!config?.homeserver?.url) return res.status(400).json({ error: 'Not configured' })
   try {
-    const r = await fetch(`${hsUrl}/_matrix/client/v3/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({})
-    })
-    const data = await r.json()
-    if (data.errcode === 'M_FORBIDDEN') {
-      res.json({ mode: 'closed' })
-    } else if (r.status === 401 && data.flows) {
-      const stages = data.flows.flatMap(f => f.stages || [])
-      const hasToken = stages.includes('m.login.registration_token')
-      const hasDummy = stages.includes('m.login.dummy')
-      // If only dummy (no token required) → open; if token required → token
-      res.json({ mode: hasDummy && !hasToken ? 'open' : hasToken ? 'token' : 'open', stages })
-    } else {
-      res.json({ mode: 'open', stages: [] })
-    }
+    const mode = await getRegistrationMode(config.homeserver.url)
+    res.json({ mode })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
@@ -398,45 +416,8 @@ app.post('/api/homeserver/registration-config', async (req, res) => {
     return res.status(400).json({ error: 'mode must be "closed", "token", or "open"' })
   }
 
-  const tomlPath = join(HS_DIR, 'tuwunel.toml')
-  if (!existsSync(tomlPath)) return res.status(400).json({ error: 'tuwunel.toml not found' })
-
   try {
-    let toml = readFileSync(tomlPath, 'utf8')
-
-    // Extract existing registration_token value (we always preserve it so token mode can be re-enabled)
-    const tokenMatch = toml.match(/^#?\s*registration_token\s*=\s*"([^"]+)"/m)
-    const existingToken = tokenMatch?.[1]
-
-    // Remove existing registration lines (we'll rewrite them)
-    toml = toml.replace(/^#?\s*allow_registration\s*=\s*.+\n?/gm, '')
-    toml = toml.replace(/^#?\s*registration_token\s*=\s*.+\n?/gm, '')
-    toml = toml.replace(/^#?\s*yes_i_am_very_very_sure_i_want_an_open_registration_server_prone_to_abuse\s*=\s*.+\n?/gm, '')
-
-    // Find insertion point — after database_path line
-    const insertAfter = /^database_path\s*=.+$/m
-    let regBlock = ''
-
-    if (mode === 'closed') {
-      regBlock = 'allow_registration = false'
-      if (existingToken) regBlock += `\n# registration_token = "${existingToken}"`
-    } else if (mode === 'token') {
-      regBlock = 'allow_registration = true'
-      if (existingToken) regBlock += `\nregistration_token = "${existingToken}"`
-    } else {
-      // open
-      regBlock = 'allow_registration = true'
-      regBlock += '\nyes_i_am_very_very_sure_i_want_an_open_registration_server_prone_to_abuse = true'
-      if (existingToken) regBlock += `\n# registration_token = "${existingToken}"`
-    }
-
-    toml = toml.replace(insertAfter, (match) => `${match}\n${regBlock}`)
-    writeFileSync(tomlPath, toml, 'utf8')
-
-    // Restart homeserver to pick up the new config
-    await composeRestart(HS_DIR)
-    await new Promise(r => setTimeout(r, 2000))
-
+    await setRegistrationMode(mode, HS_DIR)
     res.json({ success: true, mode })
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -506,7 +487,7 @@ app.post('/api/homeserver/:action', async (req, res) => {
       return res.status(400).json({ error: `Unknown action: ${action}` })
     }
     // Wait a moment for containers to settle then return fresh status
-    await new Promise(r => setTimeout(r, 2000))
+    await new Promise((r) => setTimeout(r, 2000))
     const hs = await getContainerStatus('nervur-homeserver')
     const cf = await getContainerStatus('nervur-cloudflared')
     res.json({ success: true, homeserver: hs, cloudflared: cf })
