@@ -299,10 +299,12 @@ async function classifyUsers() {
 
   const brains = new Map()
   const testUsers = new Map()
+  const humanUsers = new Map()
 
   // Check each room's m.room.create event for our custom type, then read
   // com.nervur.room state for the brain_user_id. Both are readable without
   // room membership thanks to world_readable history visibility.
+  const nervurTypes = ['com.nervur.brain_admin', 'com.nervur.test_user', 'com.nervur.human_user']
   await Promise.all(
     roomIds.map(async (roomId) => {
       try {
@@ -313,7 +315,7 @@ async function classifyUsers() {
         if (!res.ok) return
         const createEvent = await res.json()
         const roomType = createEvent.type
-        if (roomType !== 'com.nervur.brain_admin' && roomType !== 'com.nervur.test_user') return
+        if (!nervurTypes.includes(roomType)) return
 
         // Read brain_user_id from com.nervur.room state (creator field was removed in room v11)
         const stateRes = await fetch(
@@ -327,7 +329,7 @@ async function classifyUsers() {
 
         if (roomType === 'com.nervur.brain_admin') {
           brains.set(brainUserId, { roomId })
-        } else if (roomType === 'com.nervur.test_user') {
+        } else if (roomType === 'com.nervur.test_user' || roomType === 'com.nervur.human_user') {
           try {
             const membersRes = await fetch(
               `${hsUrl}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/joined_members`,
@@ -337,7 +339,11 @@ async function classifyUsers() {
               const membersData = await membersRes.json()
               for (const userId of Object.keys(membersData.joined || {})) {
                 if (userId !== brainUserId) {
-                  testUsers.set(userId, { roomId, brainUserId })
+                  if (roomType === 'com.nervur.test_user') {
+                    testUsers.set(userId, { roomId, brainUserId })
+                  } else {
+                    humanUsers.set(userId, { roomId, brainUserId })
+                  }
                 }
               }
             }
@@ -351,7 +357,7 @@ async function classifyUsers() {
     })
   )
 
-  return { brains, testUsers }
+  return { brains, testUsers, humanUsers }
 }
 
 export async function listUsers() {
@@ -369,10 +375,39 @@ export async function listUsers() {
   const filtered = userIds.filter((id) => id !== conduitBot)
 
   // Classify users by scanning room state
-  const { brains, testUsers } = await classifyUsers()
+  const { brains, testUsers, humanUsers } = await classifyUsers()
+
+  // Build set of all users who share any room with brain
+  const { hsUrl, token } = getAuth()
+  const brainRoommates = new Set()
+  try {
+    const joinedRes = await fetch(`${hsUrl}/_matrix/client/v3/joined_rooms`, { headers: headers(token) })
+    if (joinedRes.ok) {
+      const { joined_rooms } = await joinedRes.json()
+      await Promise.all(
+        (joined_rooms || []).map(async (roomId) => {
+          try {
+            const membersRes = await fetch(
+              `${hsUrl}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/joined_members`,
+              { headers: headers(token), signal: AbortSignal.timeout(5000) }
+            )
+            if (membersRes.ok) {
+              const data = await membersRes.json()
+              for (const uid of Object.keys(data.joined || {})) {
+                if (uid !== brainUserId) brainRoommates.add(uid)
+              }
+            }
+          } catch {
+            /* ignore */
+          }
+        })
+      )
+    }
+  } catch {
+    /* ignore */
+  }
 
   // Fetch display names for all users via profile API
-  const { hsUrl, token } = getAuth()
   const users = await Promise.all(
     filtered.map(async (userId) => {
       let displayname = null
@@ -393,7 +428,9 @@ export async function listUsers() {
 
       const brainInfo = brains.get(userId)
       const testInfo = testUsers.get(userId)
+      const humanInfo = humanUsers.get(userId)
       const role = brainInfo ? 'brain' : testInfo ? 'test' : 'human'
+      const linkedToBrain = !!(testInfo || humanInfo || brainRoommates.has(userId))
 
       return {
         name: userId,
@@ -402,8 +439,10 @@ export async function listUsers() {
         admin: userId === brainUserId,
         deactivated: false,
         role,
+        linkedToBrain,
         ...(brainInfo && { brainRoomId: brainInfo.roomId }),
         ...(testInfo && { brainUserId: testInfo.brainUserId }),
+        ...(humanInfo && { brainUserId: humanInfo.brainUserId }),
         ...(userId === brainUserId && { isSelf: true })
       }
     })
@@ -454,51 +493,52 @@ export async function createUser(username, password, displayName, isTest = false
     const result = await doRegister(hsUrl, username, password, mode, registrationToken, serverName)
     if (displayName) await setDisplayName(hsUrl, result.access_token, result.user_id, displayName)
 
-    // For test users, create a room with brain + test user so classifyUsers can link them
-    if (isTest) {
-      try {
-        const testUserId = result.user_id
-        const createRoomRes = await fetch(`${hsUrl}/_matrix/client/v3/createRoom`, {
-          method: 'POST',
-          headers: headers(brainToken),
-          body: JSON.stringify({
-            preset: 'private_chat',
-            name: `Test: ${displayName || username}`,
-            invite: [testUserId],
-            creation_content: { type: 'com.nervur.test_user' },
-            initial_state: [
-              {
-                type: 'm.room.history_visibility',
-                state_key: '',
-                content: { history_visibility: 'world_readable' }
-              },
-              {
-                type: 'com.nervur.room',
-                state_key: '',
-                content: {
-                  type: 'test_user',
-                  brain_user_id: brainUserId,
-                  test: true
-                }
+    // Create a room with brain + new user so classifyUsers can link them
+    try {
+      const newUserId = result.user_id
+      const roomType = isTest ? 'com.nervur.test_user' : 'com.nervur.human_user'
+      const nervurType = isTest ? 'test_user' : 'human_user'
+      const roomName = isTest ? `Test: ${displayName || username}` : `User: ${displayName || username}`
+      const createRoomRes = await fetch(`${hsUrl}/_matrix/client/v3/createRoom`, {
+        method: 'POST',
+        headers: headers(brainToken),
+        body: JSON.stringify({
+          preset: 'private_chat',
+          name: roomName,
+          invite: [newUserId],
+          creation_content: { type: roomType },
+          initial_state: [
+            {
+              type: 'm.room.history_visibility',
+              state_key: '',
+              content: { history_visibility: 'world_readable' }
+            },
+            {
+              type: 'com.nervur.room',
+              state_key: '',
+              content: {
+                type: nervurType,
+                brain_user_id: brainUserId,
+                test: isTest
               }
-            ]
-          })
+            }
+          ]
         })
-        if (!createRoomRes.ok) {
-          const err = await createRoomRes.json().catch(() => ({}))
-          console.error('Test user room creation failed:', err.error || createRoomRes.status)
-        } else {
-          const roomData = await createRoomRes.json()
-          // Accept the invite as the test user so both are joined members
-          await fetch(`${hsUrl}/_matrix/client/v3/join/${encodeURIComponent(roomData.room_id)}`, {
-            method: 'POST',
-            headers: headers(result.access_token),
-            body: JSON.stringify({})
-          })
-        }
-      } catch (err) {
-        console.error('Test user room setup error:', err.message)
+      })
+      if (!createRoomRes.ok) {
+        const err = await createRoomRes.json().catch(() => ({}))
+        console.error('User room creation failed:', err.error || createRoomRes.status)
+      } else {
+        const roomData = await createRoomRes.json()
+        // Accept the invite as the new user so both are joined members
+        await fetch(`${hsUrl}/_matrix/client/v3/join/${encodeURIComponent(roomData.room_id)}`, {
+          method: 'POST',
+          headers: headers(result.access_token),
+          body: JSON.stringify({})
+        })
       }
+    } catch (err) {
+      console.error('User room setup error:', err.message)
     }
 
     return result
@@ -615,6 +655,63 @@ export async function listRooms() {
   }
 
   return allRooms.filter((r) => !brainRoomIds.has(r.room_id))
+}
+
+export async function listBrainRooms() {
+  const { hsUrl, token, brainUserId } = getAuth()
+
+  // Get rooms the brain is a member of
+  const joinedRes = await fetch(`${hsUrl}/_matrix/client/v3/joined_rooms`, { headers: headers(token) })
+  if (!joinedRes.ok) throw new Error('Failed to fetch joined rooms')
+  const { joined_rooms } = await joinedRes.json()
+
+  // Get room details for each
+  const rooms = await Promise.all(
+    (joined_rooms || []).map(async (roomId) => {
+      try {
+        const enc = encodeURIComponent(roomId)
+
+        const [nameRes, membersRes, powerRes] = await Promise.all([
+          fetch(`${hsUrl}/_matrix/client/v3/rooms/${enc}/state/m.room.name/`, { headers: headers(token) }),
+          fetch(`${hsUrl}/_matrix/client/v3/rooms/${enc}/joined_members`, { headers: headers(token) }),
+          fetch(`${hsUrl}/_matrix/client/v3/rooms/${enc}/state/m.room.power_levels/`, { headers: headers(token) })
+        ])
+
+        const name = nameRes.ok ? (await nameRes.json()).name : roomId
+        const membersData = membersRes.ok ? await membersRes.json() : { joined: {} }
+        const allMembers = Object.keys(membersData.joined || {})
+        const otherMembers = allMembers.filter((id) => id !== brainUserId)
+
+        // Check if brain is the room owner (highest power level / creator)
+        let brainIsOwner = false
+        if (powerRes.ok) {
+          const powerLevels = await powerRes.json()
+          const brainPower = powerLevels.users?.[brainUserId] ?? powerLevels.users_default ?? 0
+          brainIsOwner = brainPower >= 100
+        }
+
+        return {
+          room_id: roomId,
+          name,
+          num_joined_members: allMembers.length,
+          num_other_members: otherMembers.length,
+          brainIsOwner,
+          topic: ''
+        }
+      } catch {
+        return {
+          room_id: roomId,
+          name: roomId,
+          num_joined_members: 0,
+          num_other_members: 0,
+          brainIsOwner: false,
+          topic: ''
+        }
+      }
+    })
+  )
+
+  return rooms
 }
 
 export async function getRoomMembers(roomId) {

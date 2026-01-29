@@ -110,7 +110,42 @@ function compareVersions(a, b) {
   return 0
 }
 
-function RegistrationSwitch({ isLocal }) {
+const themes = {
+  remote: {
+    aside: 'bg-nervur-900',
+    header: 'text-nervur-400',
+    badge: 'bg-nervur-800',
+    badgeText: 'text-nervur-400',
+    active: 'bg-nervur-700 text-white',
+    inactive: 'text-nervur-300 hover:bg-nervur-800 hover:text-white',
+    subActive: 'text-white bg-nervur-600',
+    subInactive: 'text-nervur-400 hover:text-white hover:bg-nervur-800',
+    border: 'border-nervur-800',
+    switchBg: 'bg-nervur-800',
+    switchActive: 'bg-nervur-600 text-white shadow-sm font-medium',
+    switchInactive: 'text-nervur-400 hover:text-nervur-200',
+    versionText: 'text-nervur-500',
+    switchLabel: 'text-nervur-500'
+  },
+  local: {
+    aside: 'bg-local-900',
+    header: 'text-local-400',
+    badge: 'bg-local-800',
+    badgeText: 'text-local-400',
+    active: 'bg-local-700 text-white',
+    inactive: 'text-local-300 hover:bg-local-800 hover:text-white',
+    subActive: 'text-white bg-local-600',
+    subInactive: 'text-local-400 hover:text-white hover:bg-local-800',
+    border: 'border-local-800',
+    switchBg: 'bg-local-800',
+    switchActive: 'bg-local-600 text-white shadow-sm font-medium',
+    switchInactive: 'text-local-400 hover:text-local-200',
+    versionText: 'text-local-500',
+    switchLabel: 'text-local-500'
+  }
+}
+
+function RegistrationSwitch({ isLocal, t }) {
   const [mode, setMode] = useState(null)
   const [saving, setSaving] = useState(false)
 
@@ -151,16 +186,14 @@ function RegistrationSwitch({ isLocal }) {
 
   return (
     <div className={`${saving ? 'opacity-50 pointer-events-none' : ''}`}>
-      <p className="text-nervur-500 text-[10px] uppercase tracking-wider mb-1.5">Registration</p>
-      <div className="flex rounded-md bg-nervur-800 p-0.5">
+      <p className={`${t.switchLabel} text-[10px] uppercase tracking-wider mb-1.5`}>Registration</p>
+      <div className={`flex rounded-md ${t.switchBg} p-0.5`}>
         {options.map(({ value, label }) => (
           <button
             key={value}
             onClick={() => handleChange(value)}
             className={`flex-1 text-[11px] py-1 rounded transition-all ${
-              mode === value
-                ? 'bg-nervur-600 text-white shadow-sm font-medium'
-                : 'text-nervur-400 hover:text-nervur-200'
+              mode === value ? t.switchActive : t.switchInactive
             }`}
           >
             {label}
@@ -176,6 +209,7 @@ export default function Layout({ children, config }) {
   const isLocal = config?.homeserver?.type === 'local'
   const brainName = config?.brain?.name
   const brainUserId = config?.brain?.user_id
+  const t = isLocal ? themes.local : themes.remote
   const hsActive = location.pathname.startsWith('/homeserver')
 
   const [version, setVersion] = useState(null)
@@ -214,14 +248,14 @@ export default function Layout({ children, config }) {
 
   return (
     <div className="min-h-screen flex">
-      <aside className="w-64 bg-nervur-900 text-white flex flex-col">
+      <aside className={`w-64 ${t.aside} text-white flex flex-col`}>
         <div className="p-6">
           <h1 className="text-2xl font-bold tracking-tight">NERVUR</h1>
-          <p className="text-nervur-400 text-sm mt-0.5">AI Workforce Platform</p>
+          <p className={`${t.header} text-sm mt-0.5`}>AI Workforce Platform</p>
           {brainName && (
-            <div className="mt-3 px-3 py-1.5 bg-nervur-800 rounded-md">
+            <div className={`mt-3 px-3 py-1.5 ${t.badge} rounded-md`}>
               <p className="text-white text-sm font-semibold truncate">{brainName}</p>
-              {brainUserId && <p className="text-nervur-400 text-xs truncate mt-0.5">{brainUserId}</p>}
+              {brainUserId && <p className={`${t.badgeText} text-xs truncate mt-0.5`}>{brainUserId}</p>}
             </div>
           )}
         </div>
@@ -231,9 +265,7 @@ export default function Layout({ children, config }) {
             to="/"
             end
             className={({ isActive }) =>
-              `flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors ${
-                isActive ? 'bg-nervur-700 text-white' : 'text-nervur-300 hover:bg-nervur-800 hover:text-white'
-              }`
+              `flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors ${isActive ? t.active : t.inactive}`
             }
           >
             <HomeIcon />
@@ -244,9 +276,7 @@ export default function Layout({ children, config }) {
           <NavLink
             to="/invitations"
             className={({ isActive }) =>
-              `flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors ${
-                isActive ? 'bg-nervur-700 text-white' : 'text-nervur-300 hover:bg-nervur-800 hover:text-white'
-              }`
+              `flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors ${isActive ? t.active : t.inactive}`
             }
           >
             <InboxIcon />
@@ -259,7 +289,7 @@ export default function Layout({ children, config }) {
               to="/test-users"
               className={({ isActive }) =>
                 `flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors ${
-                  isActive ? 'bg-nervur-700 text-white' : 'text-nervur-300 hover:bg-nervur-800 hover:text-white'
+                  isActive ? t.active : t.inactive
                 }`
               }
             >
@@ -272,9 +302,7 @@ export default function Layout({ children, config }) {
           <NavLink
             to="/rooms"
             className={({ isActive }) =>
-              `flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors ${
-                isActive ? 'bg-nervur-700 text-white' : 'text-nervur-300 hover:bg-nervur-800 hover:text-white'
-              }`
+              `flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors ${isActive ? t.active : t.inactive}`
             }
           >
             <RoomsIcon />
@@ -288,7 +316,7 @@ export default function Layout({ children, config }) {
                 to="/homeserver/settings"
                 className={() =>
                   `flex items-center justify-between gap-3 px-4 py-3 rounded-lg transition-colors ${
-                    hsActive ? 'bg-nervur-700 text-white' : 'text-nervur-300 hover:bg-nervur-800 hover:text-white'
+                    hsActive ? t.active : t.inactive
                   }`
                 }
               >
@@ -307,7 +335,7 @@ export default function Layout({ children, config }) {
                       end
                       className={({ isActive }) =>
                         `block px-3 py-1.5 rounded-md text-sm transition-colors ${
-                          isActive ? 'text-white bg-nervur-600' : 'text-nervur-400 hover:text-white hover:bg-nervur-800'
+                          isActive ? t.subActive : t.subInactive
                         }`
                       }
                     >
@@ -323,18 +351,16 @@ export default function Layout({ children, config }) {
           <NavLink
             to="/settings"
             className={({ isActive }) =>
-              `flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors ${
-                isActive ? 'bg-nervur-700 text-white' : 'text-nervur-300 hover:bg-nervur-800 hover:text-white'
-              }`
+              `flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors ${isActive ? t.active : t.inactive}`
             }
           >
             <CogIcon />
             Settings
           </NavLink>
         </nav>
-        <div className="p-4 border-t border-nervur-800 space-y-3">
-          <RegistrationSwitch isLocal={isLocal} />
-          <p className="text-nervur-500 text-xs">{version ? `v${version.current}` : '...'}</p>
+        <div className={`p-4 border-t ${t.border} space-y-3`}>
+          <RegistrationSwitch isLocal={isLocal} t={t} />
+          <p className={`${t.versionText} text-xs`}>{version ? `v${version.current}` : '...'}</p>
           {hasUpdate && !updating && (
             <button
               onClick={triggerUpdate}
