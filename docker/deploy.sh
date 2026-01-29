@@ -120,12 +120,6 @@ services:
       - ./tuwunel.toml:/etc/tuwunel/tuwunel.toml:ro
     environment:
       - TUWUNEL_CONFIG=/etc/tuwunel/tuwunel.toml
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8008/_matrix/client/versions"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
 
   brain:
     image: ghcr.io/nervur-ai/nervur:latest
@@ -140,8 +134,7 @@ services:
       - NODE_ENV=production
       - PORT=3000
     depends_on:
-      homeserver:
-        condition: service_healthy
+      - homeserver
 
   watchtower:
     image: containrrr/watchtower
