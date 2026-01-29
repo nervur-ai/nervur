@@ -43,9 +43,9 @@ function ChevronIcon({ open }) {
 }
 
 const hsSubLinks = [
+  { name: 'Settings', href: '/homeserver/settings' },
   { name: 'Users', href: '/homeserver/users' },
   { name: 'Rooms', href: '/homeserver/rooms' },
-  { name: 'HS Settings', href: '/homeserver/settings' },
 ]
 
 function compareVersions(a, b) {
@@ -65,10 +65,31 @@ export default function Layout({ children, config }) {
   const hsActive = location.pathname.startsWith('/homeserver')
 
   const [version, setVersion] = useState(null)
+  const [updating, setUpdating] = useState(false)
 
   useEffect(() => {
     fetch('/api/version').then(r => r.json()).then(setVersion).catch(() => {})
   }, [])
+
+  const hasUpdate = version?.latest && compareVersions(version.current, version.latest) < 0
+
+  const triggerUpdate = async () => {
+    if (updating) return
+    setUpdating(true)
+    try {
+      await fetch('/api/update', { method: 'POST' })
+    } catch {}
+    // Container will restart — poll until it's back
+    const poll = setInterval(async () => {
+      try {
+        const r = await fetch('/api/version')
+        if (r.ok) {
+          clearInterval(poll)
+          window.location.reload()
+        }
+      } catch {}
+    }, 3000)
+  }
 
   return (
     <div className="min-h-screen flex">
@@ -118,7 +139,7 @@ export default function Layout({ children, config }) {
           {isLocal && (
             <div className="mb-1">
               <NavLink
-                to="/homeserver/users"
+                to="/homeserver/settings"
                 className={() =>
                   `flex items-center justify-between gap-3 px-4 py-3 rounded-lg transition-colors ${
                     hsActive
@@ -175,10 +196,16 @@ export default function Layout({ children, config }) {
           <p className="text-nervur-500 text-xs">
             {version ? `v${version.current}` : '...'}
           </p>
-          {version?.latest && compareVersions(version.current, version.latest) < 0 && (
-            <p className="text-amber-400 text-xs mt-1">
-              Update available: v{version.latest}
-            </p>
+          {hasUpdate && !updating && (
+            <button
+              onClick={triggerUpdate}
+              className="mt-2 w-full text-xs px-3 py-1.5 rounded-md bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors"
+            >
+              Update to v{version.latest}
+            </button>
+          )}
+          {updating && (
+            <p className="text-amber-400 text-xs mt-2 animate-pulse">Updating...</p>
           )}
         </div>
       </aside>

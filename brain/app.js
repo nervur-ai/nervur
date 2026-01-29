@@ -2,6 +2,7 @@ import express from 'express'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import { rmSync, readFileSync, writeFileSync, existsSync } from 'fs'
+import { execSync, spawn } from 'child_process'
 import { readConfig, writeConfig, updateConfig, deleteConfig, deleteConfigKey, isInitialized } from './config.js'
 import { verifyHomeserver, generateRegistrationKey, registerBrain, deriveBrainPassword, runPreflightChecks, findExistingBrainAdminRoom, createBrainAdminRoom, joinTuwunelAdminRoom } from './homeserver.js'
 import { localRoutes } from '../homeserver/index.js'
@@ -40,6 +41,24 @@ app.get('/api/version', async (_req, res) => {
     }
 
     res.json({ current, latest })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Self-update — pull new image and recreate container
+app.post('/api/update', (_req, res) => {
+  const composePath = '/opt/nervur/docker-compose.yml'
+  if (!existsSync(composePath)) {
+    return res.status(400).json({ error: 'Compose file not found — update manually' })
+  }
+  try {
+    execSync('docker compose -f /opt/nervur/docker-compose.yml pull brain', { timeout: 60000 })
+    res.json({ success: true, message: 'Image pulled, restarting...' })
+    // Detach the restart so the response gets sent first
+    setTimeout(() => {
+      spawn('docker', ['compose', '-f', '/opt/nervur/docker-compose.yml', 'up', '-d', 'brain'], { detached: true, stdio: 'ignore' }).unref()
+    }, 500)
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

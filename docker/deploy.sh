@@ -103,6 +103,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - brain-data:/app/data
+      - /opt/nervur:/opt/nervur:ro
     environment:
       - NODE_ENV=production
       - PORT=3000
