@@ -45,7 +45,7 @@ The admin UI is only accessible via SSH tunnel (not exposed to the internet):
 ssh -L 4444:localhost:3000 root@your-server-ip
 ```
 
-Then open **http://localhost:4444** in your browser.
+Then open **<http://localhost:4444>** in your browser.
 
 The onboarding wizard will guide you through setting up your brain's identity on the homeserver.
 

@@ -63,6 +63,11 @@ if [ "$MODE" = "install" ]; then
   # ── Setup directory ──
   mkdir -p "${INSTALL_DIR}"
 
+  # ── Companion mode env (so docker-compose interpolates SERVER_NAME) ──
+  cat > "${INSTALL_DIR}/.env" <<ENV
+SERVER_NAME=${SERVER_NAME}
+ENV
+
   # ── Tuwunel config ──
   cat > "${INSTALL_DIR}/tuwunel.toml" <<TOML
 [global]
@@ -133,6 +138,8 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - HOMESERVER_URL=http://nervur-homeserver:8008
+      - SERVER_NAME=${SERVER_NAME}
     depends_on:
       - homeserver
 

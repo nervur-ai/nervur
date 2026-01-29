@@ -16,6 +16,11 @@ const STEPS_REMOTE = [
   { id: 'ready', title: 'Ready' }
 ]
 
+const STEPS_COMPANION = [
+  { id: 'brain', title: 'Brain' },
+  { id: 'ready', title: 'Ready' }
+]
+
 // Map old step names to new ones for resume
 const STEP_MIGRATION = {
   choose: 'server',
@@ -26,10 +31,10 @@ const STEP_MIGRATION = {
   done: 'ready'
 }
 
-export default function Onboarding({ savedConfig, onComplete }) {
-  const [path, setPath] = useState(null)
-  const [step, setStep] = useState('server')
-  const [server, setServer] = useState(null) // { url, serverName, registrationSecret? }
+export default function Onboarding({ savedConfig, companion, onComplete }) {
+  const [path, setPath] = useState(companion ? 'local' : null)
+  const [step, setStep] = useState(companion ? 'brain' : 'server')
+  const [server, setServer] = useState(companion ? { url: companion.url, serverName: companion.serverName } : null)
   const [brain, setBrain] = useState(null)
 
   // Fetch the full config from the server and pass it to onComplete
@@ -73,7 +78,7 @@ export default function Onboarding({ savedConfig, onComplete }) {
     }
   }, [savedConfig])
 
-  const visibleSteps = path === 'remote' ? STEPS_REMOTE : path === 'local' ? STEPS_LOCAL : null
+  const visibleSteps = companion ? STEPS_COMPANION : path === 'remote' ? STEPS_REMOTE : path === 'local' ? STEPS_LOCAL : null
   const currentStepIndex = visibleSteps ? visibleSteps.findIndex((s) => s.id === step) : -1
 
   async function resetOnboarding() {
@@ -163,14 +168,18 @@ export default function Onboarding({ savedConfig, onComplete }) {
               path={path}
               onCreated={(brainData) => {
                 setBrain(brainData)
-                if (path === 'local') {
+                if (companion) {
+                  // Caddy already configured by deploy.sh — skip networking
+                  setStep('ready')
+                  finishOnboarding()
+                } else if (path === 'local') {
                   setStep('network')
                 } else {
                   setStep('ready')
                   finishOnboarding()
                 }
               }}
-              onBack={() => setStep('server')}
+              onBack={companion ? undefined : () => setStep('server')}
               savedConfig={savedConfig}
             />
           )}

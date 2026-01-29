@@ -29,7 +29,7 @@ export default function App() {
   }
 
   if (!status.initialized) {
-    return <Onboarding savedConfig={status.config} onComplete={(config) => setStatus({ initialized: true, config })} />
+    return <Onboarding savedConfig={status.config} companion={status.companion} onComplete={(config) => setStatus({ initialized: true, config })} />
   }
 
   const config = status.config
