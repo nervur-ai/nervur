@@ -17,6 +17,7 @@ const STEPS_REMOTE = [
 ]
 
 const STEPS_COMPANION = [
+  { id: 'welcome', title: 'Server' },
   { id: 'brain', title: 'Brain' },
   { id: 'ready', title: 'Ready' }
 ]
@@ -33,7 +34,7 @@ const STEP_MIGRATION = {
 
 export default function Onboarding({ savedConfig, companion, onComplete }) {
   const [path, setPath] = useState(companion ? 'local' : null)
-  const [step, setStep] = useState(companion ? 'brain' : 'server')
+  const [step, setStep] = useState(companion ? 'welcome' : 'server')
   const [server, setServer] = useState(companion ? { url: companion.url, serverName: companion.serverName } : null)
   const [brain, setBrain] = useState(null)
 
@@ -83,9 +84,15 @@ export default function Onboarding({ savedConfig, companion, onComplete }) {
 
   async function resetOnboarding() {
     await fetch('/api/onboarding/reset', { method: 'POST' })
-    setPath(null)
-    setStep('server')
-    setServer(null)
+    if (companion) {
+      setPath('local')
+      setStep('welcome')
+      setServer({ url: companion.url, serverName: companion.serverName })
+    } else {
+      setPath(null)
+      setStep('server')
+      setServer(null)
+    }
     setBrain(null)
   }
 
@@ -133,13 +140,50 @@ export default function Onboarding({ savedConfig, companion, onComplete }) {
 
         {/* Card */}
         <div className="bg-white rounded-2xl shadow-2xl p-8 relative">
-          {step !== 'server' && step !== 'ready' && (
+          {step !== 'server' && step !== 'welcome' && step !== 'ready' && (
             <button
               onClick={resetOnboarding}
               className="absolute top-4 right-4 text-xs text-gray-400 hover:text-red-500 transition-colors"
             >
               Start over
             </button>
+          )}
+
+          {/* ── Welcome (companion mode) ── */}
+          {step === 'welcome' && companion && (
+            <div>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                  <svg className="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Your homeserver is ready</h2>
+                </div>
+              </div>
+              <p className="text-gray-600 mb-6">
+                Your Matrix homeserver was deployed and configured automatically.
+              </p>
+
+              <div className="bg-gray-50 rounded-lg p-4 space-y-3 mb-6">
+                <div>
+                  <p className="text-xs text-gray-500">Server name</p>
+                  <p className="text-sm font-mono text-gray-900">{companion.serverName}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Internal URL</p>
+                  <p className="text-sm font-mono text-gray-900">{companion.url}</p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setStep('brain')}
+                className="w-full px-6 py-3 bg-nervur-600 text-white rounded-lg hover:bg-nervur-700 transition-colors font-medium"
+              >
+                Continue
+              </button>
+            </div>
           )}
 
           {/* ── Server ── */}
@@ -179,7 +223,7 @@ export default function Onboarding({ savedConfig, companion, onComplete }) {
                   finishOnboarding()
                 }
               }}
-              onBack={companion ? undefined : () => setStep('server')}
+              onBack={() => setStep(companion ? 'welcome' : 'server')}
               savedConfig={savedConfig}
             />
           )}
@@ -206,7 +250,7 @@ export default function Onboarding({ savedConfig, companion, onComplete }) {
           )}
 
           {/* ── Broken resume: step can't render (missing path, server, etc.) ── */}
-          {step !== 'server' && step !== 'ready' &&
+          {step !== 'server' && step !== 'welcome' && step !== 'ready' &&
            !(step === 'brain' && server) &&
            !(step === 'network' && path === 'local') && (
             <div className="text-center py-4">
