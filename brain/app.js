@@ -1,8 +1,9 @@
 import express from 'express'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
-import { readConfig, writeConfig, updateConfig, deleteConfig, isInitialized } from './config.js'
-import { verifyHomeserver, generateRegistrationKey, registerBrain, runPreflightChecks, findExistingBrainAdminRoom, createBrainAdminRoom, joinTuwunelAdminRoom } from './homeserver.js'
+import { rmSync } from 'fs'
+import { readConfig, writeConfig, updateConfig, deleteConfig, deleteConfigKey, isInitialized } from './config.js'
+import { verifyHomeserver, generateRegistrationKey, registerBrain, deriveBrainPassword, runPreflightChecks, findExistingBrainAdminRoom, createBrainAdminRoom, joinTuwunelAdminRoom } from './homeserver.js'
 import { localRoutes } from '../homeserver/index.js'
 import { getContainerStatus, composeUp, composeDown, composeRestart } from '../homeserver/docker.js'
 import { listUsers, createUser, deactivateUser, listRooms, getRoomMembers, createRoom, inviteToRoom, getPendingInvites, acceptInvite, rejectInvite, addSSEClient, startSyncLoop } from './matrix-admin.js'
@@ -41,6 +42,32 @@ app.post('/api/onboarding/reset', (_req, res) => {
   res.json({ success: true })
 })
 
+// Factory reset — wipe everything: config, homeserver data, tunnel, users
+app.post('/api/onboarding/factory-reset', async (_req, res) => {
+  const config = readConfig()
+  try {
+    // Stop containers first if local homeserver
+    if (config?.homeserver?.type === 'local') {
+      try {
+        await composeDown(HS_DIR, { volumes: true })
+      } catch {
+        // containers may not exist, that's fine
+      }
+    }
+    // Wipe the entire homeserver directory (docker-compose, tuwunel.toml, .env, rocksdb data)
+    try {
+      rmSync(HS_DIR, { recursive: true, force: true })
+    } catch {
+      // may not exist
+    }
+    // Wipe brain config
+    deleteConfig()
+    res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // Step 1: verify homeserver is reachable
 app.post('/api/onboarding/verify-homeserver', async (req, res) => {
   const { url } = req.body
@@ -53,8 +80,7 @@ app.post('/api/onboarding/verify-homeserver', async (req, res) => {
       onboarding: {
         step: 'server',
         path: 'remote',
-        input: url,
-        homeserver: { url: info.url, serverName: info.serverName }
+        server: { input: url, url: info.url, serverName: info.serverName }
       }
     })
     res.json(info)
@@ -85,9 +111,7 @@ app.post('/api/onboarding/generate-key', (_req, res) => {
 // Save identity progress before preflight
 app.post('/api/onboarding/save-identity', (req, res) => {
   const { name, username, registrationKey } = req.body
-  const config = readConfig() || {}
-  const onboarding = config.onboarding || {}
-  updateConfig({ onboarding: { ...onboarding, step: 'brain', identity: { name, username, registrationKey } } })
+  updateConfig({ onboarding: { step: 'brain', identity: { name, username, registrationKey } } })
   res.json({ success: true })
 })
 
@@ -121,7 +145,7 @@ app.post('/api/onboarding/init-brain', async (req, res) => {
       tuwunelAdminRoomId = await joinTuwunelAdminRoom(url, result.access_token, sn)
     }
 
-    // Save final config and remove onboarding state
+    // Save brain + homeserver config (preserves onboarding state for local path's networking step)
     const final = {
       homeserver: { url, serverName: sn, type: type || 'remote', ...(tuwunelAdminRoomId && { tuwunel_admin_room_id: tuwunelAdminRoomId }) },
       brain: {
@@ -133,11 +157,35 @@ app.post('/api/onboarding/init-brain', async (req, res) => {
         admin_room_id: adminRoomId
       }
     }
-    writeConfig(final)
+    updateConfig(final)
 
     res.json({ success: true, brain: final.brain })
   } catch (err) {
     res.status(502).json({ error: err.message })
+  }
+})
+
+// Step 5: finalize onboarding — move networking data to homeserver config, delete onboarding key
+app.post('/api/onboarding/complete', (_req, res) => {
+  try {
+    const config = readConfig()
+    if (!config) return res.status(400).json({ error: 'No config found' })
+
+    // Move networking data from onboarding to homeserver
+    const net = config.onboarding?.networking
+    if (net && config.homeserver) {
+      config.homeserver.networkMode = net.networkMode || 'local'
+      if (net.domain) config.homeserver.domain = net.domain
+      if (net.tunnelToken) config.homeserver.tunnelToken = net.tunnelToken
+    }
+
+    // Remove onboarding key — setup is complete
+    delete config.onboarding
+    writeConfig(config)
+
+    res.json({ success: true, config })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
   }
 })
 

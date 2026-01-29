@@ -1,68 +1,18 @@
 import { useState, useEffect } from 'react'
+import { ButtonSpinner } from '../onboarding/icons.jsx'
+import CheckItem from '../onboarding/CheckItem.jsx'
+import { ACTIONS } from '../onboarding/machine.js'
 
-const CheckIcon = () => (
-  <svg className="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-  </svg>
-)
+export default function BrainStep({ ctx, dispatch, savedConfig }) {
+  const { server, path } = ctx
 
-const ErrorIcon = () => (
-  <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-  </svg>
-)
-
-const Spinner = () => (
-  <svg className="w-5 h-5 animate-spin text-nervur-500" fill="none" viewBox="0 0 24 24">
-    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-    <path
-      className="opacity-75"
-      fill="currentColor"
-      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-    />
-  </svg>
-)
-
-const ButtonSpinner = () => (
-  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-    <path
-      className="opacity-75"
-      fill="currentColor"
-      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-    />
-  </svg>
-)
-
-function CheckItem({ check }) {
-  return (
-    <div className="flex items-start gap-3 py-3">
-      <div className="mt-0.5">
-        {check.status === 'pass' && <CheckIcon />}
-        {check.status === 'fail' && <ErrorIcon />}
-        {check.status === 'checking' && <Spinner />}
-      </div>
-      <div className="flex-1">
-        <p className="font-medium text-gray-900">{check.label}</p>
-        <p className="text-sm text-gray-500">{check.message}</p>
-        {check.help && check.status === 'fail' && (
-          <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-sm text-red-800">{check.help}</p>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-export default function BrainStep({ server, path, onCreated, onBack, savedConfig }) {
   // Resolve initial registration key: prefer server prop, fall back to saved config
   const initialKey = (() => {
     if (path === 'local' && server.registrationSecret) return server.registrationSecret
     const ob = savedConfig?.onboarding
     if (!ob?.identity) return ''
     const isLocal = ob.path === 'local'
-    return (isLocal ? ob.registrationSecret : ob.identity?.registrationKey) || ''
+    return (isLocal ? ob.server?.registrationSecret : ob.identity?.registrationKey) || ''
   })()
 
   const [brainName, setBrainName] = useState(() => savedConfig?.onboarding?.identity?.name || '')
@@ -160,7 +110,7 @@ export default function BrainStep({ server, path, onCreated, onBack, savedConfig
           c.id === 'register' ? { ...c, status: 'pass', message: `Registered as ${data.brain.user_id}` } : c
         )
       )
-      setTimeout(() => onCreated(data.brain), 800)
+      setTimeout(() => dispatch({ type: ACTIONS.BRAIN_CREATED, brain: data.brain }), 800)
     } catch (err) {
       setChecks((prev) =>
         prev.map((c) =>
@@ -299,20 +249,18 @@ export default function BrainStep({ server, path, onCreated, onBack, savedConfig
       )}
 
       <div className="flex items-center gap-3">
-        {onBack && (
-          <button
-            onClick={() => {
-              setChecks([])
-              setCreateError(null)
-              setCreating(false)
-              onBack()
-            }}
-            disabled={creating}
-            className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-          >
-            Back
-          </button>
-        )}
+        <button
+          onClick={() => {
+            setChecks([])
+            setCreateError(null)
+            setCreating(false)
+            dispatch({ type: ACTIONS.GO_BACK })
+          }}
+          disabled={creating}
+          className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+        >
+          Back
+        </button>
         <button
           onClick={createBrain}
           disabled={!canCreate}

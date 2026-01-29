@@ -44,14 +44,16 @@ router.post('/configure', async (req, res) => {
   try {
     const result = await configure(HS_DIR, { serverName, port })
 
-    // Save progress to YAML
+    // Save progress to YAML (nested under onboarding.server)
     updateConfig({
       onboarding: {
         path: 'local',
         step: 'server',
-        serverName: result.serverName,
-        port: result.port,
-        registrationSecret: result.registrationSecret
+        server: {
+          serverName: result.serverName,
+          port: result.port,
+          registrationSecret: result.registrationSecret
+        }
       }
     })
 
@@ -76,15 +78,17 @@ router.post('/start', async (_req, res) => {
   try {
     const config = readConfig() || {}
     const onboarding = config.onboarding || {}
-    const port = onboarding.port || 8008
+    const port = onboarding.server?.port || 8008
     const result = await start(HS_DIR, undefined, port)
     if (!result.success) {
       return res.status(502).json(result)
     }
     updateConfig({
       onboarding: {
-        ...onboarding,
-        homeserver: { url: result.url, serverName: onboarding.serverName || 'nervur.local' }
+        server: {
+          url: result.url,
+          serverName: onboarding.server?.serverName || 'nervur.local'
+        }
       }
     })
 
@@ -98,7 +102,7 @@ router.post('/start', async (_req, res) => {
 router.post('/verify', async (req, res) => {
   try {
     const config = readConfig()
-    const url = req.body?.url || config?.onboarding?.homeserver?.url || 'http://localhost:8008'
+    const url = req.body?.url || config?.onboarding?.server?.url || 'http://localhost:8008'
     const result = await verify(url)
     res.json(result)
   } catch (err) {
@@ -112,10 +116,11 @@ router.get('/status', async (_req, res) => {
     const status = await getStatus(HS_DIR)
     const config = readConfig()
     const onboarding = config?.onboarding || {}
+    const server = onboarding.server || {}
 
     // Fall back to reading registration_token from tuwunel.toml if not in saved config
-    let registrationSecret = onboarding.registrationSecret
-    let serverName = onboarding.serverName
+    let registrationSecret = server.registrationSecret
+    let serverName = server.serverName
     if (!registrationSecret || !serverName) {
       try {
         const toml = readFileSync(join(HS_DIR, 'tuwunel.toml'), 'utf8')
@@ -136,7 +141,7 @@ router.get('/status', async (_req, res) => {
       ...status,
       serverName,
       registrationSecret,
-      homeserver: onboarding.homeserver
+      homeserver: server.url ? { url: server.url, serverName: server.serverName } : undefined
     })
   } catch (err) {
     res.status(500).json({ success: false, error: err.message })
@@ -165,7 +170,8 @@ router.post('/networking/configure-tunnel', async (req, res) => {
   try {
     const config = readConfig() || {}
     const onboarding = config.onboarding || {}
-    const port = onboarding.port || 8008
+    const server = onboarding.server || {}
+    const port = server.port || 8008
 
     // Read serverName from existing tuwunel.toml (source of truth)
     let serverName
@@ -176,7 +182,7 @@ router.post('/networking/configure-tunnel', async (req, res) => {
     } catch (_e) {
       // fall back to config
     }
-    serverName = serverName || onboarding.serverName || 'nervur.local'
+    serverName = serverName || server.serverName || 'nervur.local'
 
     // If tunnelToken provided, rewrite docker-compose and .env with cloudflared service
     if (tunnelToken) {
@@ -213,12 +219,11 @@ router.post('/networking/configure-tunnel', async (req, res) => {
         .json({ success: false, error: 'Homeserver did not become healthy after tunnel reconfiguration' })
     }
 
-    // Save networking config
+    // Save networking config (deep merge — no spread needed)
     const networking = { networkMode: 'public', domain }
     if (tunnelToken) networking.tunnelToken = tunnelToken
     updateConfig({
       onboarding: {
-        ...onboarding,
         step: 'network',
         networking
       }
@@ -311,15 +316,12 @@ router.post('/networking/check-cloudflared', async (_req, res) => {
 router.post('/networking/save', async (req, res) => {
   try {
     const { networkMode = 'local', domain } = req.body || {}
-    const config = readConfig() || {}
-    const onboarding = config.onboarding || {}
     const networking = { networkMode }
     if (networkMode === 'public' && domain) {
       networking.domain = domain
     }
     updateConfig({
       onboarding: {
-        ...onboarding,
         step: 'network',
         networking
       }

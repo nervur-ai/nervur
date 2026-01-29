@@ -38,6 +38,8 @@ export default function Settings({ config }) {
 
   const [resetStep, setResetStep] = useState(0)
   const [resetting, setResetting] = useState(false)
+  const [factoryStep, setFactoryStep] = useState(0)
+  const [factoryResetting, setFactoryResetting] = useState(false)
 
   // Connectivity checks + server details
   const [localCheck, setLocalCheck] = useState({ status: null, message: '' })
@@ -102,6 +104,21 @@ export default function Settings({ config }) {
     } catch (err) {
       console.error('Reset failed:', err)
       setResetting(false)
+    }
+  }
+
+  const factoryReset = async () => {
+    if (factoryStep < 2) {
+      setFactoryStep(factoryStep + 1)
+      return
+    }
+    setFactoryResetting(true)
+    try {
+      await fetch('/api/onboarding/factory-reset', { method: 'POST' })
+      window.location.reload()
+    } catch (err) {
+      console.error('Factory reset failed:', err)
+      setFactoryResetting(false)
     }
   }
 
@@ -275,32 +292,69 @@ export default function Settings({ config }) {
         {/* ── Danger Zone ── */}
         <div className="bg-white rounded-xl shadow-sm p-6 border-2 border-red-200">
           <h2 className="text-lg font-semibold text-red-600 mb-2">Danger Zone</h2>
-          <p className="text-sm text-gray-600 mb-4">
-            This will wipe the brain configuration and restart the onboarding wizard.
-            Your homeserver data will not be affected.
-          </p>
-          <button
-            onClick={resetBrain}
-            disabled={resetting}
-            className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium disabled:opacity-50 ${
-              resetStep === 0 ? 'bg-red-100 text-red-700 hover:bg-red-200' :
-              resetStep === 1 ? 'bg-red-500 text-white hover:bg-red-600' :
-              'bg-red-700 text-white hover:bg-red-800'
-            }`}
-          >
-            {resetting ? 'Resetting...' :
-             resetStep === 0 ? 'Reset Brain' :
-             resetStep === 1 ? 'Are you sure? Click again to confirm' :
-             'Final confirmation — wipe everything'}
-          </button>
-          {resetStep > 0 && !resetting && (
-            <button
-              onClick={() => setResetStep(0)}
-              className="ml-3 text-sm text-gray-500 hover:text-gray-700"
-            >
-              Cancel
-            </button>
-          )}
+
+          <div className="space-y-4">
+            {/* Hard Reset */}
+            <div>
+              <p className="text-sm text-gray-600 mb-2">
+                Wipe brain configuration and restart onboarding. Homeserver data is preserved.
+              </p>
+              <button
+                onClick={resetBrain}
+                disabled={resetting}
+                className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium disabled:opacity-50 ${
+                  resetStep === 0 ? 'bg-red-100 text-red-700 hover:bg-red-200' :
+                  resetStep === 1 ? 'bg-red-500 text-white hover:bg-red-600' :
+                  'bg-red-700 text-white hover:bg-red-800'
+                }`}
+              >
+                {resetting ? 'Resetting...' :
+                 resetStep === 0 ? 'Reset Brain' :
+                 resetStep === 1 ? 'Are you sure? Click again to confirm' :
+                 'Final confirmation — wipe config'}
+              </button>
+              {resetStep > 0 && !resetting && (
+                <button
+                  onClick={() => setResetStep(0)}
+                  className="ml-3 text-sm text-gray-500 hover:text-gray-700"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+
+            {/* Factory Reset */}
+            {isLocal && (
+              <div className="pt-3 border-t border-red-100">
+                <p className="text-sm text-gray-600 mb-2">
+                  Wipe <strong>everything</strong>: config, tunnel, homeserver data, users, and registration key.
+                  Containers will be stopped and volumes removed. This cannot be undone.
+                </p>
+                <button
+                  onClick={factoryReset}
+                  disabled={factoryResetting}
+                  className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium disabled:opacity-50 ${
+                    factoryStep === 0 ? 'bg-red-100 text-red-700 hover:bg-red-200' :
+                    factoryStep === 1 ? 'bg-red-500 text-white hover:bg-red-600' :
+                    'bg-red-700 text-white hover:bg-red-800'
+                  }`}
+                >
+                  {factoryResetting ? 'Wiping everything...' :
+                   factoryStep === 0 ? 'Factory Reset' :
+                   factoryStep === 1 ? 'Are you sure? This deletes ALL data' :
+                   'Final confirmation — destroy everything'}
+                </button>
+                {factoryStep > 0 && !factoryResetting && (
+                  <button
+                    onClick={() => setFactoryStep(0)}
+                    className="ml-3 text-sm text-gray-500 hover:text-gray-700"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

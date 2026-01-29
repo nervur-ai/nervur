@@ -201,7 +201,11 @@ describe('POST /api/onboarding/init-brain', () => {
     expect(config.homeserver.tuwunel_admin_room_id).toBeUndefined()
   })
 
-  it('removes onboarding key and persists registrationKey after init', async () => {
+  it('preserves onboarding state after init (for local networking step)', async () => {
+    // Pre-populate onboarding state
+    const { updateConfig } = await import('../config.js')
+    updateConfig({ onboarding: { step: 'brain', path: 'local', server: { serverName: 'localhost', port: 6167 } } })
+
     registerBrain.mockResolvedValue({
       user_id: '@brain:localhost',
       access_token: 'syt_abc'
@@ -217,7 +221,9 @@ describe('POST /api/onboarding/init-brain', () => {
     })
 
     const config = yaml.load(readFileSync(getConfigPath(), 'utf8'))
-    expect(config.onboarding).toBeUndefined()
+    // onboarding should still exist (removed only by /complete)
+    expect(config.onboarding).toBeDefined()
+    expect(config.onboarding.server.serverName).toBe('localhost')
     expect(config.brain.user_id).toBe('@brain:localhost')
     expect(config.brain.registrationKey).toBe('test-key')
   })
@@ -265,12 +271,11 @@ describe('onboarding state persistence', () => {
     const config = yaml.load(readFileSync(getConfigPath(), 'utf8'))
     expect(config.onboarding.step).toBe('server')
     expect(config.onboarding.path).toBe('remote')
-    expect(config.onboarding.homeserver.url).toBe('http://localhost:8008')
-    expect(config.onboarding.homeserver.serverName).toBe('localhost')
+    expect(config.onboarding.server.url).toBe('http://localhost:8008')
+    expect(config.onboarding.server.serverName).toBe('localhost')
     // Read-only data should NOT be saved
-    expect(config.onboarding.homeserver.versions).toBeUndefined()
-    expect(config.onboarding.homeserver.unstableFeatures).toBeUndefined()
-    expect(config.onboarding.homeserver.server).toBeUndefined()
+    expect(config.onboarding.server.versions).toBeUndefined()
+    expect(config.onboarding.server.unstableFeatures).toBeUndefined()
   })
 
   it('status returns onboarding config for resume', async () => {
@@ -280,5 +285,44 @@ describe('onboarding state persistence', () => {
     const res = await request(app).get('/api/status')
     expect(res.body.initialized).toBe(false)
     expect(res.body.config.onboarding.step).toBe('server')
+  })
+})
+
+describe('POST /api/onboarding/complete', () => {
+  it('returns 400 when no config exists', async () => {
+    const res = await request(app).post('/api/onboarding/complete')
+    expect(res.status).toBe(400)
+  })
+
+  it('removes onboarding key and moves networking to homeserver', async () => {
+    const { writeConfig } = await import('../config.js')
+    writeConfig({
+      homeserver: { url: 'http://localhost:8008', serverName: 'localhost', type: 'local' },
+      brain: { user_id: '@brain:localhost', access_token: 'syt_abc', registrationKey: 'test-key' },
+      onboarding: { step: 'ready', path: 'local', networking: { networkMode: 'tunnel', domain: 'brain.example.com', tunnelToken: 'tok_123' } }
+    })
+
+    const res = await request(app).post('/api/onboarding/complete')
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+    expect(res.body.config.onboarding).toBeUndefined()
+    expect(res.body.config.homeserver.networkMode).toBe('tunnel')
+    expect(res.body.config.homeserver.domain).toBe('brain.example.com')
+    expect(res.body.config.homeserver.tunnelToken).toBe('tok_123')
+    expect(res.body.config.brain.registrationKey).toBe('test-key')
+  })
+
+  it('works without networking data (remote path)', async () => {
+    const { writeConfig } = await import('../config.js')
+    writeConfig({
+      homeserver: { url: 'http://remote:8008', serverName: 'remote', type: 'remote' },
+      brain: { user_id: '@brain:remote', access_token: 'syt_xyz' },
+      onboarding: { step: 'ready', path: 'remote' }
+    })
+
+    const res = await request(app).post('/api/onboarding/complete')
+    expect(res.status).toBe(200)
+    expect(res.body.config.onboarding).toBeUndefined()
+    expect(res.body.config.homeserver.networkMode).toBeUndefined()
   })
 })

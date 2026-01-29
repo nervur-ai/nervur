@@ -1,46 +1,30 @@
-import { useState, useEffect } from 'react'
+import { useReducer, useEffect } from 'react'
 import ServerStep from './ServerStep.jsx'
 import BrainStep from './BrainStep.jsx'
 import NetworkingStep from './NetworkingStep.jsx'
-
-const STEPS_LOCAL = [
-  { id: 'server', title: 'Server' },
-  { id: 'brain', title: 'Brain' },
-  { id: 'network', title: 'Network' },
-  { id: 'ready', title: 'Ready' }
-]
-
-const STEPS_REMOTE = [
-  { id: 'server', title: 'Server' },
-  { id: 'brain', title: 'Brain' },
-  { id: 'ready', title: 'Ready' }
-]
-
-const STEPS_COMPANION = [
-  { id: 'welcome', title: 'Server' },
-  { id: 'brain', title: 'Brain' },
-  { id: 'ready', title: 'Ready' }
-]
-
-// Map old step names to new ones for resume
-const STEP_MIGRATION = {
-  choose: 'server',
-  connect: 'server',
-  provision: 'server',
-  identity: 'brain',
-  networking: 'network',
-  done: 'ready'
-}
+import { CheckIcon } from '../onboarding/icons.jsx'
+import {
+  onboardingReducer,
+  createInitialState,
+  getStepTitles,
+  ACTIONS
+} from '../onboarding/machine.js'
 
 export default function Onboarding({ savedConfig, companion, onComplete }) {
-  const [path, setPath] = useState(companion ? 'local' : null)
-  const [step, setStep] = useState(companion ? 'welcome' : 'server')
-  const [server, setServer] = useState(companion ? { url: companion.url, serverName: companion.serverName } : null)
-  const [brain, setBrain] = useState(null)
+  const [ctx, dispatch] = useReducer(onboardingReducer, companion, createInitialState)
 
   // Fetch the full config from the server and pass it to onComplete
-  // This ensures the frontend gets all fields (type, networkMode, domain, etc.)
   const finishOnboarding = async () => {
+    // Call /complete to finalize config (move networking data, delete onboarding key)
+    try {
+      const completeRes = await fetch('/api/onboarding/complete', { method: 'POST' })
+      const completeData = await completeRes.json()
+      if (completeData.config) {
+        onComplete(completeData.config)
+        return
+      }
+    } catch {}
+    // Fallback: fetch status
     try {
       const res = await fetch('/api/status')
       const data = await res.json()
@@ -49,51 +33,30 @@ export default function Onboarding({ savedConfig, companion, onComplete }) {
         return
       }
     } catch {}
-    // Fallback: pass what we have
-    onComplete({ homeserver: { url: server?.url, serverName: server?.serverName }, brain })
+    // Last resort
+    onComplete({ homeserver: { url: ctx.server?.url, serverName: ctx.server?.serverName }, brain: ctx.brain })
   }
 
-  // Restore from saved config
+  // Restore from saved config on mount
   useEffect(() => {
     const ob = savedConfig?.onboarding
     if (!ob) return
+    dispatch({ type: ACTIONS.RESTORE, onboarding: ob, companion })
+  }, [savedConfig, companion])
 
-    if (ob.path) setPath(ob.path)
-
-    // Restore server info
-    if (ob.homeserver?.url) {
-      setServer({
-        url: ob.homeserver.url,
-        serverName: ob.homeserver.serverName || ob.serverName,
-        registrationSecret: ob.registrationSecret
-      })
+  // Auto-finish when reaching ready step
+  useEffect(() => {
+    if (ctx.step === 'ready' && ctx.brain?.user_id) {
+      finishOnboarding()
     }
+  }, [ctx.step, ctx.brain?.user_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Restore brain
-    if (ob.brain) setBrain(ob.brain)
-
-    // Resume at the right step (migrate old names)
-    if (ob.step) {
-      const migrated = STEP_MIGRATION[ob.step] || ob.step
-      setStep(migrated)
-    }
-  }, [savedConfig])
-
-  const visibleSteps = companion ? STEPS_COMPANION : path === 'remote' ? STEPS_REMOTE : path === 'local' ? STEPS_LOCAL : null
-  const currentStepIndex = visibleSteps ? visibleSteps.findIndex((s) => s.id === step) : -1
+  const stepTitles = getStepTitles(ctx.path)
+  const currentStepIndex = stepTitles ? stepTitles.findIndex((s) => s.id === ctx.step) : -1
 
   async function resetOnboarding() {
     await fetch('/api/onboarding/reset', { method: 'POST' })
-    if (companion) {
-      setPath('local')
-      setStep('welcome')
-      setServer({ url: companion.url, serverName: companion.serverName })
-    } else {
-      setPath(null)
-      setStep('server')
-      setServer(null)
-    }
-    setBrain(null)
+    dispatch({ type: ACTIONS.RESET, companion })
   }
 
   return (
@@ -106,8 +69,8 @@ export default function Onboarding({ savedConfig, companion, onComplete }) {
         </div>
 
         {/* Progress dots */}
-        {visibleSteps && <div className="flex justify-center mb-8">
-          {visibleSteps.map((s, index) => {
+        {stepTitles && <div className="flex justify-center mb-8">
+          {stepTitles.map((s, index) => {
             const isComplete = index < currentStepIndex
             const isCurrent = index === currentStepIndex
             return (
@@ -130,7 +93,7 @@ export default function Onboarding({ savedConfig, companion, onComplete }) {
                     index + 1
                   )}
                 </div>
-                {index < visibleSteps.length - 1 && (
+                {index < stepTitles.length - 1 && (
                   <div className={`w-12 h-0.5 ${isComplete ? 'bg-green-500' : 'bg-nervur-800'}`} />
                 )}
               </div>
@@ -138,9 +101,16 @@ export default function Onboarding({ savedConfig, companion, onComplete }) {
           })}
         </div>}
 
+        {/* Resume message */}
+        {ctx.resumeMessage && (
+          <div className="mb-4 text-center">
+            <p className="text-nervur-400 text-sm">{ctx.resumeMessage}</p>
+          </div>
+        )}
+
         {/* Card */}
         <div className="bg-white rounded-2xl shadow-2xl p-8 relative">
-          {step !== 'server' && step !== 'welcome' && step !== 'ready' && (
+          {ctx.step !== 'server' && ctx.step !== 'welcome' && ctx.step !== 'ready' && (
             <button
               onClick={resetOnboarding}
               className="absolute top-4 right-4 text-xs text-gray-400 hover:text-red-500 transition-colors"
@@ -149,157 +119,109 @@ export default function Onboarding({ savedConfig, companion, onComplete }) {
             </button>
           )}
 
-          {/* ── Welcome (companion mode) ── */}
-          {step === 'welcome' && companion && (
-            <div>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                  <svg className="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900">Your homeserver is ready</h2>
-                </div>
-              </div>
-              <p className="text-gray-600 mb-6">
-                Your Matrix homeserver was deployed and configured automatically.
-              </p>
-
-              <div className="bg-gray-50 rounded-lg p-4 space-y-3 mb-6">
-                <div>
-                  <p className="text-xs text-gray-500">Server name</p>
-                  <p className="text-sm font-mono text-gray-900">{companion.serverName}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Internal URL</p>
-                  <p className="text-sm font-mono text-gray-900">{companion.url}</p>
-                </div>
-              </div>
-
-              <button
-                onClick={() => setStep('brain')}
-                className="w-full px-6 py-3 bg-nervur-600 text-white rounded-lg hover:bg-nervur-700 transition-colors font-medium"
-              >
-                Continue
-              </button>
-            </div>
+          {/* Welcome (companion mode) */}
+          {ctx.step === 'welcome' && ctx.path === 'companion' && (
+            <WelcomeStep companion={companion} onContinue={() => dispatch({ type: ACTIONS.SET_STEP, step: 'brain' })} />
           )}
 
-          {/* ── Server ── */}
-          {step === 'server' && (
+          {/* Server */}
+          {ctx.step === 'server' && (
             <ServerStep
-              path={path}
-              onPathChange={(p) => {
-                setPath(p)
-                setServer(null)
-                setBrain(null)
-              }}
-              onVerified={(result) => {
-                setServer(result)
-                setStep('brain')
-              }}
+              ctx={ctx}
+              dispatch={dispatch}
               savedConfig={savedConfig}
               onReset={resetOnboarding}
-              existingServer={server}
             />
           )}
 
-          {/* ── Brain ── */}
-          {step === 'brain' && server && (
+          {/* Brain */}
+          {ctx.step === 'brain' && ctx.server && (
             <BrainStep
-              server={server}
-              path={path}
-              onCreated={(brainData) => {
-                setBrain(brainData)
-                if (companion) {
-                  // Caddy already configured by deploy.sh — skip networking
-                  setStep('ready')
-                  finishOnboarding()
-                } else if (path === 'local') {
-                  setStep('network')
-                } else {
-                  setStep('ready')
-                  finishOnboarding()
-                }
-              }}
-              onBack={() => setStep(companion ? 'welcome' : 'server')}
+              ctx={ctx}
+              dispatch={dispatch}
               savedConfig={savedConfig}
             />
           )}
 
-          {/* ── Network (local only) ── */}
-          {step === 'network' && path === 'local' && (
+          {/* Network (local only) */}
+          {ctx.step === 'network' && ctx.path === 'local' && (
             <NetworkingStep
-              serverName={server?.serverName}
-              onBack={() => setStep('brain')}
-              onComplete={() => {
-                setStep('ready')
-                finishOnboarding()
-              }}
-              onSkip={() => {
-                fetch('/api/onboarding/local/networking/save', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' }
-                })
-                setStep('ready')
-                finishOnboarding()
-              }}
+              ctx={ctx}
+              dispatch={dispatch}
               savedConfig={savedConfig}
             />
           )}
 
-          {/* ── Broken resume: step can't render (missing path, server, etc.) ── */}
-          {step !== 'server' && step !== 'welcome' && step !== 'ready' &&
-           !(step === 'brain' && server) &&
-           !(step === 'network' && path === 'local') && (
-            <div className="text-center py-4">
-              <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-6 h-6 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </div>
-              <h2 className="text-xl font-bold text-gray-900 mb-2">Setup interrupted</h2>
-              <p className="text-gray-500 text-sm mb-6">
-                A previous setup was incomplete and can't be resumed. Start fresh to configure your brain.
-              </p>
-              <button
-                onClick={resetOnboarding}
-                className="px-5 py-2.5 bg-nervur-600 text-white rounded-lg hover:bg-nervur-700 transition-colors text-sm font-medium"
-              >
-                Start fresh
-              </button>
-            </div>
-          )}
-
-          {/* ── Ready ── */}
-          {step === 'ready' && (
-            <div className="text-center">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Brain Initialized</h2>
-              <p className="text-gray-600 mb-6">Your brain is ready to go.</p>
-
-              <div className="bg-gray-50 rounded-lg p-4 text-left space-y-2">
-                {server && (
-                  <div>
-                    <p className="text-xs text-gray-500">Homeserver</p>
-                    <p className="text-sm font-mono text-gray-900">{server.url}</p>
-                  </div>
-                )}
-                {brain?.user_id && (
-                  <div>
-                    <p className="text-xs text-gray-500">Brain ID</p>
-                    <p className="text-sm font-mono text-gray-900 break-all">{brain.user_id}</p>
-                  </div>
-                )}
-              </div>
-            </div>
+          {/* Ready */}
+          {ctx.step === 'ready' && (
+            <ReadyStep server={ctx.server} brain={ctx.brain} />
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+function WelcomeStep({ companion, onContinue }) {
+  return (
+    <div>
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+          <CheckIcon />
+        </div>
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Your homeserver is ready</h2>
+        </div>
+      </div>
+      <p className="text-gray-600 mb-6">
+        Your Matrix homeserver was deployed and configured automatically.
+      </p>
+
+      <div className="bg-gray-50 rounded-lg p-4 space-y-3 mb-6">
+        <div>
+          <p className="text-xs text-gray-500">Server name</p>
+          <p className="text-sm font-mono text-gray-900">{companion.serverName}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-500">Internal URL</p>
+          <p className="text-sm font-mono text-gray-900">{companion.url}</p>
+        </div>
+      </div>
+
+      <button
+        onClick={onContinue}
+        className="w-full px-6 py-3 bg-nervur-600 text-white rounded-lg hover:bg-nervur-700 transition-colors font-medium"
+      >
+        Continue
+      </button>
+    </div>
+  )
+}
+
+function ReadyStep({ server, brain }) {
+  return (
+    <div className="text-center">
+      <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+        <svg className="w-8 h-8 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+      </div>
+      <h2 className="text-2xl font-bold text-gray-900 mb-2">Brain Initialized</h2>
+      <p className="text-gray-600 mb-6">Your brain is ready to go.</p>
+
+      <div className="bg-gray-50 rounded-lg p-4 text-left space-y-2">
+        {server && (
+          <div>
+            <p className="text-xs text-gray-500">Homeserver</p>
+            <p className="text-sm font-mono text-gray-900">{server.url}</p>
+          </div>
+        )}
+        {brain?.user_id && (
+          <div>
+            <p className="text-xs text-gray-500">Brain ID</p>
+            <p className="text-sm font-mono text-gray-900 break-all">{brain.user_id}</p>
+          </div>
+        )}
       </div>
     </div>
   )

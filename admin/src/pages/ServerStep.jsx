@@ -1,77 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
-
-const CheckIcon = () => (
-  <svg className="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-  </svg>
-)
-
-const ErrorIcon = () => (
-  <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-  </svg>
-)
-
-const WarnIcon = () => (
-  <svg className="w-5 h-5 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"
-    />
-  </svg>
-)
-
-const Spinner = () => (
-  <svg className="w-5 h-5 animate-spin text-nervur-500" fill="none" viewBox="0 0 24 24">
-    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-    <path
-      className="opacity-75"
-      fill="currentColor"
-      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-    />
-  </svg>
-)
-
-const ButtonSpinner = () => (
-  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-    <path
-      className="opacity-75"
-      fill="currentColor"
-      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-    />
-  </svg>
-)
-
-function StepItem({ step }) {
-  return (
-    <div className="flex items-start gap-3 py-3">
-      <div className="mt-0.5">
-        {step.status === 'pass' && <CheckIcon />}
-        {step.status === 'fail' && <ErrorIcon />}
-        {step.status === 'warn' && <WarnIcon />}
-        {step.status === 'checking' && <Spinner />}
-        {!step.status && <div className="w-5 h-5 rounded-full border-2 border-gray-200" />}
-      </div>
-      <div className="flex-1">
-        <p className={`font-medium ${step.status ? 'text-gray-900' : 'text-gray-400'}`}>{step.label}</p>
-        {step.message && <p className="text-sm text-gray-500">{step.message}</p>}
-        {step.help && step.status === 'fail' && (
-          <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-sm text-red-800">{step.help}</p>
-          </div>
-        )}
-        {step.help && step.status === 'warn' && (
-          <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <p className="text-sm text-yellow-800">{step.help}</p>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
+import { CheckIcon, ErrorIcon, WarnIcon, Spinner, ButtonSpinner } from '../onboarding/icons.jsx'
+import CheckItem from '../onboarding/CheckItem.jsx'
+import { ACTIONS } from '../onboarding/machine.js'
 
 // Parse Matrix spec version strings like "v1.12" or "r0.6.1"
 function parseSpecVersion(str) {
@@ -109,7 +39,9 @@ const PROVISION_STEPS = [
   { id: 'ready', label: 'Homeserver ready' }
 ]
 
-export default function ServerStep({ path, onPathChange, onVerified, savedConfig, onReset, existingServer }) {
+export default function ServerStep({ ctx, dispatch, savedConfig, onReset }) {
+  const { path, server: existingServer } = ctx
+
   // ── Local state ──
   const [serverName, setServerName] = useState('nervur.local')
   const [port, setPort] = useState('8008')
@@ -203,17 +135,17 @@ export default function ServerStep({ path, onPathChange, onVerified, savedConfig
     }
 
     if (ob.path === 'local') {
-      if (ob.serverName) setServerName(ob.serverName)
-      if (ob.port) setPort(String(ob.port))
+      if (ob.server?.serverName) setServerName(ob.server.serverName)
+      if (ob.server?.port) setPort(String(ob.server.port))
       runInitialCheck()
-    } else if (ob.path === 'remote' && (ob.input || ob.homeserver?.url)) {
-      setUrl(ob.input || ob.homeserver.url)
+    } else if (ob.path === 'remote' && (ob.server?.input || ob.server?.url)) {
+      setUrl(ob.server.input || ob.server.url)
       setHsValidation({ status: 'checking', message: 'Reconnecting to homeserver...' })
 
       fetch('/api/onboarding/verify-homeserver', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: ob.input })
+        body: JSON.stringify({ url: ob.server.input })
       })
         .then((r) => r.json())
         .then((data) => {
@@ -252,7 +184,13 @@ export default function ServerStep({ path, onPathChange, onVerified, savedConfig
           body: JSON.stringify({ port: portNum })
         })
         const data = await res.json()
-        setPortStatus(data.available ? 'available' : 'busy')
+        if (data.available) {
+          setPortStatus('available')
+        } else {
+          // Port is busy — but if it's our own Tuwunel container, that's fine (will be replaced)
+          const ownPort = (preflightData?.tuwunelContainers || []).some(c => c.port === portNum)
+          setPortStatus(ownPort ? 'available' : 'busy')
+        }
       } catch {
         setPortStatus(null)
       }
@@ -383,7 +321,7 @@ export default function ServerStep({ path, onPathChange, onVerified, savedConfig
   // ── Path toggle handler ──
   function handlePathChange(newPath) {
     if (newPath === path || isBusy) return
-    onPathChange(newPath)
+    dispatch({ type: ACTIONS.PATH_CHANGED, path: newPath })
     // Reset local state when switching
     if (newPath === 'local') {
       setUrl('')
@@ -396,6 +334,11 @@ export default function ServerStep({ path, onPathChange, onVerified, savedConfig
       setLocalError(null)
       setProvisionedResult(null)
     }
+  }
+
+  // ── Dispatch helpers ──
+  function onVerified(result) {
+    dispatch({ type: ACTIONS.SERVER_VERIFIED, server: result })
   }
 
   const localHasFailed = provSteps.some((s) => s.status === 'fail')
@@ -437,7 +380,7 @@ export default function ServerStep({ path, onPathChange, onVerified, savedConfig
           {provSteps.length > 0 && (
             <div className="mb-6 border border-gray-200 rounded-lg divide-y divide-gray-100 px-4">
               {provSteps.map((step) => (
-                <StepItem key={step.id} step={step} />
+                <CheckItem key={step.id} check={step} />
               ))}
             </div>
           )}
@@ -549,6 +492,12 @@ export default function ServerStep({ path, onPathChange, onVerified, savedConfig
           {localPhase === 'done' && (
             <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
               <p className="text-green-800 text-sm font-medium">Homeserver provisioned successfully.</p>
+              {provisionedResult?.serverName && (
+                <p className="text-green-700 text-sm mt-1">
+                  Server name: <code className="bg-green-100 px-1 rounded font-medium">{provisionedResult.serverName}</code>
+                  <span className="text-green-600 ml-1">— to change this, go back and re-provision.</span>
+                </p>
+              )}
             </div>
           )}
 

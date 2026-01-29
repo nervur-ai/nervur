@@ -1,50 +1,12 @@
 import { useState, useEffect } from 'react'
+import { CheckIcon } from '../onboarding/icons.jsx'
+import CheckItem from '../onboarding/CheckItem.jsx'
+import { ACTIONS } from '../onboarding/machine.js'
 
-const CheckIcon = () => (
-  <svg className="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-  </svg>
-)
+export default function NetworkingStep({ ctx, dispatch, savedConfig }) {
+  const { server } = ctx
+  const serverName = server?.serverName
 
-const ErrorIcon = () => (
-  <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-  </svg>
-)
-
-const Spinner = () => (
-  <svg className="w-5 h-5 animate-spin text-nervur-500" fill="none" viewBox="0 0 24 24">
-    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-    <path
-      className="opacity-75"
-      fill="currentColor"
-      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-    />
-  </svg>
-)
-
-function CheckItem({ check }) {
-  return (
-    <div className="flex items-start gap-3 py-3">
-      <div className="mt-0.5">
-        {check.status === 'pass' && <CheckIcon />}
-        {check.status === 'fail' && <ErrorIcon />}
-        {check.status === 'checking' && <Spinner />}
-      </div>
-      <div className="flex-1">
-        <p className="font-medium text-gray-900">{check.label}</p>
-        <p className="text-sm text-gray-500">{check.message}</p>
-        {check.help && check.status === 'fail' && (
-          <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-sm text-red-800">{check.help}</p>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-export default function NetworkingStep({ onComplete, onSkip, onBack, savedConfig, serverName }) {
   // Phases: choose | direct-domain | domain | tunnel-input | configuring | done
   const [phase, setPhase] = useState('choose')
   const [domain, setDomain] = useState(serverName || '')
@@ -55,8 +17,7 @@ export default function NetworkingStep({ onComplete, onSkip, onBack, savedConfig
   const [networkMode, setNetworkMode] = useState(null) // 'tunnel' | 'direct'
 
   // Resume: if saved config has public networking AND the onboarding step is
-  // actually at 'network', re-verify. Without the step check, a reset + re-run
-  // would auto-resume from stale savedConfig props and skip the token prompt.
+  // actually at 'network', re-verify.
   useEffect(() => {
     const ob = savedConfig?.onboarding
     const net = ob?.networking
@@ -128,7 +89,6 @@ export default function NetworkingStep({ onComplete, onSkip, onBack, savedConfig
     }
 
     if (tunnelOk) {
-      // Tunnel works end-to-end — save and done
       setChecks([
         { id: 'tunnel', label: 'Check public endpoint', status: 'pass', message: `Reachable (${tunnelData.versions?.length || 0} API versions)` },
         { id: 'container', label: 'Check cloudflared container', status: 'pass', message: 'Tunnel active' }
@@ -159,7 +119,6 @@ export default function NetworkingStep({ onComplete, onSkip, onBack, savedConfig
     }
 
     if (containerData.running) {
-      // Container running but tunnel not reachable — maybe well_known needs reconfiguring
       setChecks(prev => prev.map(c =>
         c.id === 'container' ? { ...c, status: 'pass', message: 'Cloudflared running — reconfiguring homeserver...' } : c
       ))
@@ -181,7 +140,6 @@ export default function NetworkingStep({ onComplete, onSkip, onBack, savedConfig
           return
         }
       } catch {}
-      // Reconfigure failed — still running but something else is wrong
       setChecks(prev => prev.map(c =>
         c.id === 'container' ? {
           ...c, status: 'fail',
@@ -195,7 +153,6 @@ export default function NetworkingStep({ onComplete, onSkip, onBack, savedConfig
       containerData.error.includes('not valid') ||
       containerData.error.includes('Unauthorized')
     )) {
-      // Container exists but crashed due to bad token
       setChecks(prev => prev.map(c =>
         c.id === 'container' ? {
           ...c, status: 'fail',
@@ -205,7 +162,6 @@ export default function NetworkingStep({ onComplete, onSkip, onBack, savedConfig
       ))
       setPhase('tunnel-input')
     } else if (!containerData.running && containerData.status && containerData.status !== 'not_found') {
-      // Container exists but not running (exited, restarting, etc.)
       setChecks(prev => prev.map(c =>
         c.id === 'container' ? {
           ...c, status: 'fail',
@@ -215,7 +171,6 @@ export default function NetworkingStep({ onComplete, onSkip, onBack, savedConfig
       ))
       setPhase('tunnel-input')
     } else {
-      // No container at all
       setChecks(prev => prev.map(c =>
         c.id === 'container' ? { ...c, status: 'fail', message: 'No cloudflared container found' } : c
       ))
@@ -302,7 +257,6 @@ export default function NetworkingStep({ onComplete, onSkip, onBack, savedConfig
         c.id === 'cloudflared' ? { ...c, status: 'checking', message: 'Checking cloudflared container...' } : c
       )
     )
-    // Poll a few times to give cloudflared time to start
     let cfOk = false
     for (let attempt = 0; attempt < 6; attempt++) {
       try {
@@ -353,7 +307,6 @@ export default function NetworkingStep({ onComplete, onSkip, onBack, savedConfig
       await new Promise((r) => setTimeout(r, 3000))
     }
     if (!cfOk) {
-      // Check one more time for specific errors
       try {
         const res = await fetch('/api/onboarding/local/networking/check-cloudflared', { method: 'POST' })
         const data = await res.json()
@@ -471,7 +424,7 @@ export default function NetworkingStep({ onComplete, onSkip, onBack, savedConfig
       return
     }
 
-    // Step 2: Configure well_known (direct mode — federation port 8448)
+    // Step 2: Configure well_known (direct mode)
     setChecks((prev) =>
       prev.map((c) =>
         c.id === 'configure' ? { ...c, status: 'checking', message: 'Configuring well_known and restarting...' } : c
@@ -524,7 +477,6 @@ export default function NetworkingStep({ onComplete, onSkip, onBack, savedConfig
         setPhase('done')
         return
       }
-      // HS may not be reachable via HTTPS yet (needs reverse proxy / TLS)
       setChecks((prev) =>
         prev.map((c) =>
           c.id === 'verify'
@@ -553,6 +505,22 @@ export default function NetworkingStep({ onComplete, onSkip, onBack, savedConfig
     }
   }
 
+  function handleSkip() {
+    fetch('/api/onboarding/local/networking/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    })
+    dispatch({ type: ACTIONS.NETWORK_SKIPPED })
+  }
+
+  function handleComplete(networking) {
+    dispatch({ type: ACTIONS.NETWORK_CONFIGURED, networking })
+  }
+
+  function handleBack() {
+    dispatch({ type: ACTIONS.GO_BACK })
+  }
+
   // Choose phase
   if (phase === 'choose') {
     return (
@@ -563,7 +531,7 @@ export default function NetworkingStep({ onComplete, onSkip, onBack, savedConfig
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <button
-            onClick={onSkip}
+            onClick={handleSkip}
             className="p-4 bg-gray-50 rounded-lg text-left hover:bg-nervur-50 hover:border-nervur-300 border border-gray-200 transition-colors"
           >
             <h3 className="font-semibold text-gray-900">Local only</h3>
@@ -590,14 +558,12 @@ export default function NetworkingStep({ onComplete, onSkip, onBack, savedConfig
             </p>
           </button>
         </div>
-        {onBack && (
-          <button
-            onClick={onBack}
-            className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-          >
-            Back
-          </button>
-        )}
+        <button
+          onClick={handleBack}
+          className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+        >
+          Back
+        </button>
       </div>
     )
   }
@@ -737,7 +703,7 @@ export default function NetworkingStep({ onComplete, onSkip, onBack, savedConfig
     )
   }
 
-  // Tunnel token input phase (shown only when probe failed — tunnel not already reachable)
+  // Tunnel token input phase
   if (phase === 'tunnel-input') {
     const hasFailure = checks.some((c) => c.status === 'fail')
     const isRunning = checks.some((c) => c.status === 'checking')
@@ -892,7 +858,7 @@ export default function NetworkingStep({ onComplete, onSkip, onBack, savedConfig
           Back
         </button>
         <button
-          onClick={() => onComplete({ networkMode: 'public', domain, tunnelToken })}
+          onClick={() => handleComplete({ networkMode: 'public', domain, tunnelToken })}
           className="px-6 py-3 bg-nervur-600 text-white rounded-lg hover:bg-nervur-700"
         >
           Continue

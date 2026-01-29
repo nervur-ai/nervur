@@ -32,8 +32,10 @@ export async function composeUp(dir) {
   return { output: stdout }
 }
 
-export async function composeDown(dir) {
-  const { stdout } = await run('docker', ['compose', 'down'], { cwd: dir, timeout: 60_000 })
+export async function composeDown(dir, { volumes = false } = {}) {
+  const args = ['compose', 'down']
+  if (volumes) args.push('-v')
+  const { stdout } = await run('docker', args, { cwd: dir, timeout: 60_000 })
   return { output: stdout }
 }
 
