@@ -12,6 +12,7 @@ RUN npm run build --prefix admin
 
 # Production stage — only runtime deps
 FROM node:20-alpine
+LABEL org.opencontainers.image.source=https://github.com/nervur-ai/nervur
 WORKDIR /app
 
 COPY package.json package-lock.json ./
