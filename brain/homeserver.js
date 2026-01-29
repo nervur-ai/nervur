@@ -323,11 +323,13 @@ async function checkLoginFlows(url) {
   }
 }
 
-export async function registerBrain(url, serverName, { username, registrationKey }) {
+export async function registerBrain(url, serverName, { username, registrationKey, type }) {
   const password = deriveBrainPassword(registrationKey, username)
 
-  // Try standard Matrix registration with token
-  const registered = await tryRegister(url, username, password, registrationKey)
+  // For local: use registrationKey as the m.login.registration_token (it matches tuwunel.toml)
+  // For remote: registrationKey is only for password derivation; use open registration (m.login.dummy)
+  const token = type === 'local' ? registrationKey : null
+  const registered = await tryRegister(url, username, password, token)
   if (registered) return registered
 
   throw new Error('Registration failed: homeserver rejected all registration methods. Check the preflight results.')

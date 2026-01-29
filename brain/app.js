@@ -119,7 +119,8 @@ app.post('/api/onboarding/init-brain', async (req, res) => {
     const sn = serverName || new URL(url).hostname
     const result = await registerBrain(url, sn, {
       username: username.trim(),
-      registrationKey: registrationKey.trim()
+      registrationKey: registrationKey.trim(),
+      type: type || 'remote'
     })
 
     // Find or create the brain admin room
