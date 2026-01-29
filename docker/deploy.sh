@@ -88,6 +88,9 @@ fi
 # BOTH INSTALL AND UPDATE
 # ══════════════════════════════════════════════
 
+# ── Create shared network (brain + homeserver will use this) ──
+docker network create nervur 2>/dev/null || true
+
 # ── Docker Compose (always written — adds Watchtower to old installs) ──
 cat > "${COMPOSE_FILE}" <<'YAML'
 services:
@@ -103,6 +106,8 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+    networks:
+      - nervur
 
   watchtower:
     image: containrrr/watchtower
@@ -113,6 +118,10 @@ services:
     environment:
       - DOCKER_API_VERSION=1.44
     command: --interval 300 nervur-brain
+
+networks:
+  nervur:
+    external: true
 
 volumes:
   brain-data:

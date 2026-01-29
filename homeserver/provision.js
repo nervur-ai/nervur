@@ -159,14 +159,9 @@ export async function pull() {
 const isDocker = existsSync('/.dockerenv')
 
 export async function start(hsDir, containerName = CONTAINER_NAME, port = HS_PORT) {
-  // Set up shared Docker network so brain container can reach homeserver by name
+  // Ensure shared Docker network exists (brain is already on it via deploy.sh compose)
   await ensureNetwork('nervur')
   await composeUp(hsDir)
-
-  if (isDocker) {
-    // Connect the brain container to the nervur network
-    await connectToNetwork('nervur-brain', 'nervur')
-  }
 
   // Use container name for health check when in Docker, localhost otherwise
   const healthUrl = isDocker ? `http://${containerName}:8008` : `http://localhost:${port}`
