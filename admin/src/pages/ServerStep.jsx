@@ -226,9 +226,11 @@ export default function ServerStep({ ctx, dispatch, savedConfig, onReset }) {
       const statusData = await statusRes.json()
       const sn = statusData.serverName || serverName
 
-      updateProvStep('ready', { status: 'pass', message: `Homeserver running at ${hsUrl}` })
+      // Use URL returned by backend (may differ from localhost when brain runs in Docker)
+      const verifiedUrl = verData.url || hsUrl
+      updateProvStep('ready', { status: 'pass', message: `Homeserver running at ${verifiedUrl}` })
       setLocalPhase('done')
-      setProvisionedResult({ url: hsUrl, serverName: sn, registrationSecret: statusData.registrationSecret })
+      setProvisionedResult({ url: verifiedUrl, serverName: sn, registrationSecret: statusData.registrationSecret })
     } catch (err) {
       setLocalError(err.message)
       setLocalPhase('choose')

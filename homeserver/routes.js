@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { readFileSync, writeFileSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import { readConfig, updateConfig } from '../brain/config.js'
@@ -102,7 +102,13 @@ router.post('/start', async (_req, res) => {
 router.post('/verify', async (req, res) => {
   try {
     const config = readConfig()
-    const url = req.body?.url || config?.onboarding?.server?.url || 'http://localhost:8008'
+    let url = req.body?.url || config?.onboarding?.server?.url || 'http://localhost:8008'
+    // Inside Docker, localhost doesn't reach the host — use container name via shared network
+    const isDocker = existsSync('/.dockerenv')
+    if (isDocker && url.includes('localhost')) {
+      const port = new URL(url).port || '8008'
+      url = `http://nervur-homeserver:${port}`
+    }
     const result = await verify(url)
     res.json(result)
   } catch (err) {
