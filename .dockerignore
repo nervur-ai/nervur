@@ -1,0 +1,10 @@
+node_modules/
+admin/node_modules/
+admin/dist/
+data/
+config.yml
+.git/
+__tests__/
+*.test.js
+vitest.config.js
+docker/

@@ -1,0 +1,211 @@
+import { useState, useEffect } from 'react'
+
+const Spinner = ({ className = 'w-4 h-4' }) => (
+  <svg className={`animate-spin text-nervur-500 ${className}`} fill="none" viewBox="0 0 24 24">
+    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+  </svg>
+)
+
+const CheckIcon = () => (
+  <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+  </svg>
+)
+
+const ErrorIcon = () => (
+  <svg className="w-4 h-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+  </svg>
+)
+
+export default function HSSettings({ config }) {
+  const hs = config?.homeserver || {}
+  const hasPublicDomain = !!hs.domain
+
+  const [containers, setContainers] = useState(null)
+  const [hsAction, setHsAction] = useState('')
+  const [regConfig, setRegConfig] = useState(null)
+
+  useEffect(() => {
+    fetchContainerStatus()
+    fetchRegConfig()
+  }, [])
+
+  const fetchContainerStatus = async () => {
+    try {
+      const res = await fetch('/api/homeserver/status')
+      const data = await res.json()
+      if (data.available) setContainers(data)
+    } catch {}
+  }
+
+  const containerAction = async (action) => {
+    setHsAction(action)
+    try {
+      const res = await fetch(`/api/homeserver/${action}`, { method: 'POST' })
+      const data = await res.json()
+      if (data.homeserver) {
+        setContainers({ available: true, homeserver: data.homeserver, cloudflared: data.cloudflared })
+      } else {
+        setTimeout(fetchContainerStatus, 2000)
+      }
+    } catch {
+      setTimeout(fetchContainerStatus, 2000)
+    }
+    setHsAction('')
+  }
+
+  const fetchRegConfig = async () => {
+    try {
+      const res = await fetch('/api/homeserver/registration-config')
+      const data = await res.json()
+      if (!data.error) setRegConfig(data)
+    } catch {}
+  }
+
+  const hsRunning = containers?.homeserver?.running
+  const hsConfigured = containers?.available
+  const cfRunning = containers?.cloudflared?.running
+  const hasCloudflared = containers?.cloudflared && containers.cloudflared.status !== 'not_found'
+
+  return (
+    <div>
+      <h1 className="text-3xl font-bold text-gray-900 mb-8">Homeserver Settings</h1>
+
+      <div className="max-w-3xl space-y-6">
+        {/* Container controls */}
+        <div className="bg-white rounded-xl shadow-sm p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">Containers</h2>
+            <div className="flex items-center gap-3">
+              {hsRunning ? (
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => containerAction('restart')}
+                    disabled={!!hsAction}
+                    className="px-2.5 py-1 text-xs border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {hsAction === 'restart' ? 'Restarting...' : 'Restart'}
+                  </button>
+                  <button
+                    onClick={() => containerAction('stop')}
+                    disabled={!!hsAction}
+                    className="px-2.5 py-1 text-xs border border-red-300 text-red-600 rounded-md hover:bg-red-50 disabled:opacity-50"
+                  >
+                    {hsAction === 'stop' ? 'Stopping...' : 'Stop'}
+                  </button>
+                </div>
+              ) : hsConfigured ? (
+                <button
+                  onClick={() => containerAction('start')}
+                  disabled={!!hsAction}
+                  className="px-2.5 py-1 text-xs bg-nervur-600 text-white rounded-md hover:bg-nervur-700 disabled:opacity-50"
+                >
+                  {hsAction === 'start' ? 'Starting...' : 'Start'}
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          {containers ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${hsRunning ? 'bg-green-500' : 'bg-red-500'}`} />
+                  <span className="text-gray-700 font-medium">nervur-homeserver</span>
+                </div>
+                <span className={`text-xs ${hsRunning ? 'text-green-600' : 'text-red-600'}`}>
+                  {containers.homeserver.status}
+                </span>
+              </div>
+              {containers.cloudflared && containers.cloudflared.status !== 'not_found' && (
+                <div className="flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${cfRunning ? 'bg-green-500' : 'bg-gray-400'}`} />
+                    <span className="text-gray-700 font-medium">nervur-cloudflared</span>
+                  </div>
+                  <span className={`text-xs ${cfRunning ? 'text-green-600' : 'text-gray-400'}`}>
+                    {containers.cloudflared?.status || 'not found'}
+                  </span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-sm text-gray-400">
+              <Spinner />
+              <span>Checking containers...</span>
+            </div>
+          )}
+        </div>
+
+        {/* Registration config */}
+        <div className="bg-white rounded-xl shadow-sm p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Registration</h2>
+          {!regConfig ? (
+            <div className="flex items-center gap-2 text-sm text-gray-400">
+              <Spinner />
+              <span>Checking registration...</span>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm">
+                {regConfig.registrationEnabled ? <CheckIcon /> : <ErrorIcon />}
+                <span className="text-gray-700">
+                  Registration is {regConfig.registrationEnabled ? 'enabled' : 'disabled'}
+                </span>
+              </div>
+              {regConfig.stages?.length > 0 && (
+                <div className="text-sm">
+                  <span className="text-gray-500">Auth stages:</span>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {regConfig.stages.map(s => (
+                      <span key={s} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Server info summary */}
+        <div className="bg-white rounded-xl shadow-sm p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Server Configuration</h2>
+          <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
+            <div>
+              <span className="text-gray-500">Server name</span>
+              <p className="font-mono font-medium text-gray-900">{hs.serverName || '-'}</p>
+            </div>
+            <div>
+              <span className="text-gray-500">URL</span>
+              <p className="font-mono font-medium text-gray-900">{hs.url || '-'}</p>
+            </div>
+            {hasPublicDomain && (
+              <>
+                <div>
+                  <span className="text-gray-500">Public domain</span>
+                  <p className="font-mono font-medium text-gray-900">{hs.domain}</p>
+                </div>
+                <div>
+                  <span className="text-gray-500">Network</span>
+                  <p className="font-medium text-gray-900">
+                    {hasCloudflared ? (
+                      <span className={cfRunning ? 'text-green-600' : 'text-gray-400'}>
+                        Cloudflare Tunnel ({cfRunning ? 'active' : 'inactive'})
+                      </span>
+                    ) : (
+                      <span className="text-gray-700">Direct</span>
+                    )}
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -1,0 +1,38 @@
+services:
+  homeserver:
+    image: ghcr.io/matrix-construct/tuwunel:latest
+    container_name: nervur-homeserver
+    restart: unless-stopped
+    ports:
+      - "8008:8008"
+    volumes:
+      - homeserver-data:/var/lib/tuwunel
+      - ./tuwunel.toml:/etc/tuwunel/tuwunel.toml:ro
+    environment:
+      - TUWUNEL_CONFIG=/etc/tuwunel/tuwunel.toml
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8008/_matrix/client/versions"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  brain:
+    image: ghcr.io/nervur-ai/nervur:latest
+    container_name: nervur-brain
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - brain-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    depends_on:
+      homeserver:
+        condition: service_healthy
+
+volumes:
+  homeserver-data:
+  brain-data:
