@@ -887,10 +887,19 @@ export async function getPendingInvites() {
 // Long-polls Matrix /sync and emits invitation changes to SSE listeners
 
 const sseClients = new Set()
+const syncMessageCallbacks = []
 
 export function addSSEClient(res) {
   sseClients.add(res)
   res.on('close', () => sseClients.delete(res))
+}
+
+/**
+ * Register a callback that fires for every new message from /sync.
+ * Callback receives (message) where message has: id, sender, body, msgtype, timestamp, roomId, roomName, fromBrain
+ */
+export function onSyncMessage(callback) {
+  syncMessageCallbacks.push(callback)
 }
 
 function broadcast(event, data) {
@@ -943,47 +952,55 @@ async function runSyncLoop() {
         broadcast('invitations', { invitations: fullInvites })
       }
 
-      // Broadcast new messages from joined rooms
-      if (sseClients.size > 0) {
-        const { brainUserId, serverName } = getAuth()
-        const config = readConfig()
-        const conduitBot = `@conduit:${serverName}`
-        const skipRooms = new Set()
-        if (config?.homeserver?.tuwunel_admin_room_id) skipRooms.add(config.homeserver.tuwunel_admin_room_id)
-        if (config?.brain?.admin_room_id) skipRooms.add(config.brain.admin_room_id)
+      // Process new messages from joined rooms (always, not just when SSE clients exist)
+      const { brainUserId, serverName } = getAuth()
+      const config = readConfig()
+      const conduitBot = `@conduit:${serverName}`
+      const skipRooms = new Set()
+      if (config?.homeserver?.tuwunel_admin_room_id) skipRooms.add(config.homeserver.tuwunel_admin_room_id)
+      if (config?.brain?.admin_room_id) skipRooms.add(config.brain.admin_room_id)
 
-        const newMessages = []
+      const newMessages = []
 
-        for (const [roomId, roomData] of Object.entries(joined)) {
-          if (skipRooms.has(roomId)) continue
+      for (const [roomId, roomData] of Object.entries(joined)) {
+        if (skipRooms.has(roomId)) continue
 
-          const events = roomData.timeline?.events || []
-          const msgEvents = events.filter((e) => e.type === 'm.room.message' && e.sender !== conduitBot)
-          if (msgEvents.length === 0) continue
+        const events = roomData.timeline?.events || []
+        const msgEvents = events.filter((e) => e.type === 'm.room.message' && e.sender !== conduitBot)
+        if (msgEvents.length === 0) continue
 
-          // Get room name (best-effort from state in sync response)
-          let roomName = roomId
-          const nameEvent = (roomData.state?.events || []).find((e) => e.type === 'm.room.name')
-          if (nameEvent?.content?.name) roomName = nameEvent.content.name
+        // Get room name (best-effort from state in sync response)
+        let roomName = roomId
+        const nameEvent = (roomData.state?.events || []).find((e) => e.type === 'm.room.name')
+        if (nameEvent?.content?.name) roomName = nameEvent.content.name
 
-          for (const e of msgEvents) {
-            newMessages.push({
-              id: e.event_id,
-              sender: e.sender,
-              body: e.content?.body || '',
-              msgtype: e.content?.msgtype || 'm.text',
-              ...(e.content?.intent !== undefined && { intent: e.content.intent }),
-              ...(e.content?.payload !== undefined && { payload: e.content.payload }),
-              timestamp: e.origin_server_ts,
-              roomId,
-              roomName,
-              fromBrain: e.sender === brainUserId
-            })
-          }
+        for (const e of msgEvents) {
+          newMessages.push({
+            id: e.event_id,
+            sender: e.sender,
+            body: e.content?.body || '',
+            msgtype: e.content?.msgtype || 'm.text',
+            ...(e.content?.intent !== undefined && { intent: e.content.intent }),
+            ...(e.content?.payload !== undefined && { payload: e.content.payload }),
+            timestamp: e.origin_server_ts,
+            roomId,
+            roomName,
+            fromBrain: e.sender === brainUserId
+          })
+        }
+      }
+
+      if (newMessages.length > 0) {
+        // Broadcast to SSE clients (admin UI)
+        if (sseClients.size > 0) {
+          broadcast('messages', { messages: newMessages })
         }
 
-        if (newMessages.length > 0) {
-          broadcast('messages', { messages: newMessages })
+        // Notify registered callbacks (router, etc.)
+        for (const msg of newMessages) {
+          for (const cb of syncMessageCallbacks) {
+            try { cb(msg) } catch (err) { console.error('syncMessage callback error:', err.message) }
+          }
         }
       }
     } catch {
@@ -1146,6 +1163,65 @@ export async function sendRoomMessage(roomId, body, { msgtype = 'm.text', intent
     }
   )
   if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || `HTTP ${res.status}`)
+  }
+  return res.json()
+}
+
+// Cache test user tokens so we don't login on every message
+const userTokenCache = new Map()
+
+/**
+ * Send a message to a room as a specific user (not the brain).
+ * Logs in as the user using their derived password, then sends the message.
+ */
+export async function sendRoomMessageAs(userId, roomId, body, { msgtype = 'm.text' } = {}) {
+  const { hsUrl } = getAuth()
+  const config = readConfig()
+  const registrationKey = config?.brain?.registrationKey
+  if (!registrationKey) throw new Error('Brain registration key not found')
+
+  // Get or create token for this user
+  let userToken = userTokenCache.get(userId)
+  if (!userToken) {
+    const localpart = userId.replace(/^@/, '').split(':')[0]
+    const password = deriveBrainPassword(registrationKey, localpart)
+    const loginRes = await fetch(`${hsUrl}/_matrix/client/v3/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'm.login.password',
+        identifier: { type: 'm.id.user', user: localpart },
+        password,
+        initial_device_display_name: 'Nervur Admin'
+      }),
+      signal: AbortSignal.timeout(10_000)
+    })
+    if (!loginRes.ok) {
+      const err = await loginRes.json().catch(() => ({}))
+      throw new Error(err.error || `Login failed for ${userId}`)
+    }
+    const data = await loginRes.json()
+    userToken = data.access_token
+    userTokenCache.set(userId, userToken)
+  }
+
+  const txnId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  const res = await fetch(
+    `${hsUrl}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txnId}`,
+    {
+      method: 'PUT',
+      headers: headers(userToken),
+      body: JSON.stringify({ msgtype, body })
+    }
+  )
+  if (!res.ok) {
+    // If token expired, clear cache and retry once
+    if (res.status === 401) {
+      userTokenCache.delete(userId)
+      return sendRoomMessageAs(userId, roomId, body, { msgtype })
+    }
     const err = await res.json().catch(() => ({}))
     throw new Error(err.error || `HTTP ${res.status}`)
   }

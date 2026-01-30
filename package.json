@@ -1,6 +1,6 @@
 {
   "name": "nervur-brain",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Nervur Brain — Express server with Matrix identity",
   "type": "module",
   "private": true,

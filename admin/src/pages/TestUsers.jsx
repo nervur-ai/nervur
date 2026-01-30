@@ -232,6 +232,7 @@ export default function TestUsers({ config }) {
             roomId={selectedUser.roomId}
             roomName={selectedUser.displayname || selectedUser.name}
             brainUserId={brainUserId}
+            sendAsUserId={selectedUser.name}
             onClose={() => setSelectedUser(null)}
           />
         </div>

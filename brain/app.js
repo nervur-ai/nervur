@@ -33,6 +33,7 @@ import {
   setRegistrationMode,
   getRoomMessages,
   sendRoomMessage,
+  sendRoomMessageAs,
   getAllBrainMessages,
   getSkillState,
   updateSkillState,
@@ -395,6 +396,19 @@ app.post('/api/brain/rooms/:id/messages', async (req, res) => {
     if (intent !== undefined) opts.intent = intent
     if (payload !== undefined) opts.payload = payload
     const result = await sendRoomMessage(req.params.id, body, opts)
+    res.json({ success: true, ...result })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.post('/api/brain/rooms/:id/messages/as/:userId', async (req, res) => {
+  const { body, msgtype } = req.body
+  if (!body) return res.status(400).json({ error: 'body is required' })
+  try {
+    const opts = {}
+    if (msgtype) opts.msgtype = msgtype
+    const result = await sendRoomMessageAs(decodeURIComponent(req.params.userId), req.params.id, body, opts)
     res.json({ success: true, ...result })
   } catch (err) {
     res.status(500).json({ error: err.message })

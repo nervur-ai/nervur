@@ -2,6 +2,8 @@ import app from './app.js'
 import { readConfig, updateConfig } from './config.js'
 import { deriveBrainPassword } from './homeserver.js'
 import { bootInternalSkills } from './skills.js'
+import { startSyncLoop } from './matrix-admin.js'
+import { startRouter } from './router.js'
 
 const PORT = process.env.PORT || 3000
 
@@ -57,4 +59,6 @@ app.listen(PORT, async () => {
   console.log(`Brain listening on port ${PORT}`)
   await validateSession()
   await bootInternalSkills()
+  startSyncLoop()
+  await startRouter()
 })

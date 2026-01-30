@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Spinner } from './UserComponents.jsx'
 import MessageBubble from './MessageBubble.jsx'
 
-export default function ChatPanel({ roomId, roomName, brainUserId, onClose, readOnly = false, hideHeader = false }) {
+export default function ChatPanel({ roomId, roomName, brainUserId, sendAsUserId, onClose, readOnly = false, hideHeader = false }) {
   const [messages, setMessages] = useState([])
   const [loading, setLoading] = useState(true)
   const [input, setInput] = useState('')
@@ -41,7 +41,10 @@ export default function ChatPanel({ roomId, roomName, brainUserId, onClose, read
     setSending(true)
     setInput('')
     try {
-      await fetch(`/api/brain/rooms/${encodeURIComponent(roomId)}/messages`, {
+      const url = sendAsUserId
+        ? `/api/brain/rooms/${encodeURIComponent(roomId)}/messages/as/${encodeURIComponent(sendAsUserId)}`
+        : `/api/brain/rooms/${encodeURIComponent(roomId)}/messages`
+      await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ body: text })

@@ -59,6 +59,10 @@ export async function bootInternalSkills() {
       const handler = skillModule.default || skillModule
       if (typeof handler === 'function') {
         handler(client)
+        // Re-emit connected so skill handlers registered after connect() see it
+        if (client.connected) {
+          client.emit('connected', { userId: client.userId, roomId: client.roomId })
+        }
       } else {
         console.warn(`Skills: ${name}/index.js does not export a default function`)
       }
